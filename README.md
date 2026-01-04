@@ -46,3 +46,7 @@ To create an optimized build for deployment:
 npm run build
 ```
 The output will be generated in the `dist` folder.
+
+5.  **Link of web**
+
+    https://genesis-project--aaryankai145.replit.app
