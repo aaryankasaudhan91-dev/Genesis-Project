@@ -1,11 +1,48 @@
-<div align="center">
+# MEALers connect
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+A streamlined platform connecting food donors, volunteers, and orphanages to eliminate food waste and fight hunger.
 
-  <h1>Built with AI Studio</h2>
+## Prerequisites
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+- **Node.js** (v18 or higher recommended)
+- **npm** (comes with Node.js)
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+## Getting Started
 
-</div>
+1.  **Install Dependencies**
+
+    Open a terminal in the project root directory and run:
+    ```bash
+    npm install
+    ```
+
+2.  **Configure Environment Variables**
+
+    This application uses the Google Gemini API for AI features (food safety analysis, mapping, etc.). You must provide a valid API key.
+
+    - Create a new file named `.env` in the root directory.
+    - Add your API key to it (see `.env.example` for reference):
+
+    ```env
+    API_KEY=your_google_gemini_api_key_here
+    ```
+
+3.  **Run the Application**
+
+    Start the local development server:
+    ```bash
+    npm run dev
+    ```
+
+4.  **Open in Browser**
+
+    Navigate to the URL displayed in your terminal (usually `http://localhost:5173`).
+
+## Building for Production
+
+To create an optimized build for deployment:
+
+```bash
+npm run build
+```
+The output will be generated in the `dist` folder.
