@@ -28,7 +28,7 @@ A streamlined platform connecting food donors, volunteers, and orphanages to eli
     # Google Gemini API
     API_KEY=your_google_gemini_api_key
 
-    # Firebase Config (Required for Real OTP)
+    # Firebase Config (Optional - For Real OTP)
     FIREBASE_API_KEY=your_firebase_api_key
     FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
     FIREBASE_PROJECT_ID=your_project_id
@@ -37,7 +37,7 @@ A streamlined platform connecting food donors, volunteers, and orphanages to eli
     FIREBASE_APP_ID=your_app_id
     ```
 
-    > **Note:** If Firebase keys are missing, the app will automatically fall back to a "Simulation Mode" for OTP login, allowing you to test the flow without SMS credits.
+    > **Simulation Mode:** If you do not provide Firebase keys (or leave them as placeholders), the app will automatically run in **Simulation Mode**. OTPs will be mocked and displayed in an in-app notification for testing purposes.
 
 3.  **Run the Application**
 

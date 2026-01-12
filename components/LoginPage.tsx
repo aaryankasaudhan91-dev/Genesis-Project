@@ -172,6 +172,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
   // --- HYBRID OTP LOGIC (Firebase with Fallback) ---
   const initiatePhoneLogin = () => {
+      // Clear previous verifier instance to handle DOM remounts cleanly
+      if (window.recaptchaVerifier) {
+          try {
+              window.recaptchaVerifier.clear();
+          } catch (e) {
+              console.warn("Failed to clear recaptcha", e);
+          }
+          window.recaptchaVerifier = null;
+      }
+
       setShowPhoneModal(true);
       setPhoneStep('INPUT');
       setOtpInput('');
