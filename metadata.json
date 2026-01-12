@@ -1,5 +1,5 @@
 {
-  "name": "Copy of MEALers connect",
+  "name": "MEALers connect",
   "description": "A streamlined platform connecting food donors, volunteers, and orphanages to eliminate food waste and fight hunger.",
   "requestFramePermissions": [
     "geolocation",

@@ -73,6 +73,11 @@ export const storage = {
     }
     return null;
   },
+  deleteUser: (id: string) => {
+    let users = storage.getUsers();
+    users = users.filter(u => u.id !== id);
+    localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
+  },
   toggleFavorite: (donorId: string, requesterId: string) => {
     const users = storage.getUsers();
     const donorIndex = users.findIndex(u => u.id === donorId);

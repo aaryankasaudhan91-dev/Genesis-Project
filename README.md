@@ -1,3 +1,4 @@
+
 # MEALers connect
 
 A streamlined platform connecting food donors, volunteers, and orphanages to eliminate food waste and fight hunger.
@@ -18,14 +19,25 @@ A streamlined platform connecting food donors, volunteers, and orphanages to eli
 
 2.  **Configure Environment Variables**
 
-    This application uses the Google Gemini API for AI features (food safety analysis, mapping, etc.). You must provide a valid API key.
+    This application uses **Google Gemini API** for AI features (food safety, mapping) and **Firebase** for OTP authentication.
 
     - Create a new file named `.env` in the root directory.
-    - Add your API key to it (see `.env.example` for reference):
+    - Copy the contents from `.env.example` and fill in your actual keys.
 
     ```env
-    API_KEY=your_google_gemini_api_key_here
+    # Google Gemini API
+    API_KEY=your_google_gemini_api_key
+
+    # Firebase Config (Required for Real OTP)
+    FIREBASE_API_KEY=your_firebase_api_key
+    FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+    FIREBASE_PROJECT_ID=your_project_id
+    FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+    FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+    FIREBASE_APP_ID=your_app_id
     ```
+
+    > **Note:** If Firebase keys are missing, the app will automatically fall back to a "Simulation Mode" for OTP login, allowing you to test the flow without SMS credits.
 
 3.  **Run the Application**
 
@@ -46,7 +58,3 @@ To create an optimized build for deployment:
 npm run build
 ```
 The output will be generated in the `dist` folder.
-
-5.  **Link of web**
-
-    https://genesis-project--aaryankai145.replit.app

@@ -428,6 +428,14 @@ export default function App() {
       }
   };
 
+  const handleDeleteAccount = () => {
+      if (user) {
+          storage.deleteUser(user.id);
+          setUser(null);
+          setView('LOGIN');
+      }
+  };
+
   // --- RENDER HELPERS ---
 
   const renderStatsCard = (label: string, value: string | number, icon: string, colorClass: string) => (
@@ -599,10 +607,15 @@ export default function App() {
   if (view === 'PROFILE' && user) {
     return (
         <Layout user={user} onLogout={() => setView('LOGIN')} onProfileClick={() => {}} onLogoClick={() => setView('DASHBOARD')} onContactClick={() => setView('CONTACT')} onHelpClick={() => setView('HELP')} notifications={notifications}>
-            <ProfileView user={user} onUpdate={(updates) => {
-                storage.updateUser(user.id, updates);
-                setUser({ ...user, ...updates });
-            }} onBack={() => setView('DASHBOARD')} />
+            <ProfileView 
+                user={user} 
+                onUpdate={(updates) => {
+                    storage.updateUser(user.id, updates);
+                    setUser({ ...user, ...updates });
+                }} 
+                onBack={() => setView('DASHBOARD')} 
+                onDelete={handleDeleteAccount}
+            />
         </Layout>
     );
   }

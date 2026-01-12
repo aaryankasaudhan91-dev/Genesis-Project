@@ -159,13 +159,18 @@ export const reverseGeocode = async (lat: number, lng: number): Promise<ReverseG
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: `You are an expert delivery coordinator. The user is at coordinates: ${lat}, ${lng}. 
-      Find the most precise street address.
-      Return VALID JSON with the following fields:
-      - line1: House/Building Number and Street Name.
-      - line2: Area, Sector, or Locality name.
-      - landmark: A specific, well-known nearby landmark.
-      - pincode: The postal code.`,
+      contents: `You are a location accuracy expert. The user is currently at coordinates: ${lat}, ${lng}. 
+      Find the most precise street address available.
+      
+      Return a VALID JSON object with these exact keys:
+      - line1: Detailed street address including Building Name/Number and Street Name.
+      - line2: Area, Sector, Locality, and City.
+      - landmark: A nearby well-known landmark (e.g., "Opposite City Mall").
+      - pincode: The precise postal code.
+
+      Example: {"line1": "No. 42, Galaxy Apartments, 5th Cross", "line2": "Indiranagar, Bangalore", "landmark": "Near Metro Station", "pincode": "560038"}
+
+      Do not use markdown formatting. Just return the JSON string.`,
       config: {
         tools: [{ googleMaps: {} }],
         toolConfig: {
@@ -179,7 +184,10 @@ export const reverseGeocode = async (lat: number, lng: number): Promise<ReverseG
       },
     });
 
-    const text = response.text || "";
+    let text = response.text || "";
+    // Remove potential markdown code blocks
+    text = text.replace(/```json\n?|```/g, '').trim();
+    
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       return JSON.parse(jsonMatch[0]);
@@ -195,13 +203,15 @@ export const getAddressFromPincode = async (pincode: string): Promise<ReverseGeo
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: `Find the location details for the Indian Pincode "${pincode}". Return a VALID JSON object with: line1, line2, landmark, pincode.`,
+      contents: `Find the location details for the Indian Pincode "${pincode}". Return a VALID JSON object with: line1 (City/District), line2 (State), landmark (Main area), pincode.`,
       config: {
         tools: [{ googleMaps: {} }],
       },
     });
 
-    const text = response.text || "";
+    let text = response.text || "";
+    text = text.replace(/```json\n?|```/g, '').trim();
+
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       return JSON.parse(jsonMatch[0]);
@@ -263,7 +273,9 @@ export const getOptimizedRoute = async (origin: string, destination: string, way
       },
     });
     
-    const text = response.text || "";
+    let text = response.text || "";
+    text = text.replace(/```json\n?|```/g, '').trim();
+
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       return JSON.parse(jsonMatch[0]);
