@@ -1,8 +1,9 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User, UserRole, FoodPosting, FoodStatus, Notification, Rating } from './types';
 import { storage } from './services/storageService';
 import { analyzeFoodSafetyImage, reverseGeocode } from './services/geminiService';
+import { auth } from './services/firebaseConfig';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import Layout from './components/Layout';
 import FoodCard from './components/FoodCard';
 import PostingsMap from './components/PostingsMap';
@@ -63,6 +64,26 @@ export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auth Persistence
+  useEffect(() => {
+    if (auth) {
+        const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+            if (firebaseUser) {
+                // If we have a firebase user, check if we have a matching app user
+                // This prevents 'flashing' to login screen if local data exists
+                const storedUsers = storage.getUsers();
+                const matchedUser = storedUsers.find(u => u.email === firebaseUser.email);
+                
+                if (matchedUser && !user) {
+                    setUser(matchedUser);
+                    setView('DASHBOARD');
+                }
+            }
+        });
+        return () => unsubscribe();
+    }
+  }, [user]);
 
   useEffect(() => {
     // Splash Screen Timer
@@ -431,6 +452,7 @@ export default function App() {
   const handleDeleteAccount = () => {
       if (user) {
           storage.deleteUser(user.id);
+          if (auth) signOut(auth);
           setUser(null);
           setView('LOGIN');
       }
@@ -606,7 +628,7 @@ export default function App() {
 
   if (view === 'PROFILE' && user) {
     return (
-        <Layout user={user} onLogout={() => setView('LOGIN')} onProfileClick={() => {}} onLogoClick={() => setView('DASHBOARD')} onContactClick={() => setView('CONTACT')} onHelpClick={() => setView('HELP')} notifications={notifications}>
+        <Layout user={user} onLogout={() => { if (auth) signOut(auth); setUser(null); setView('LOGIN'); }} onProfileClick={() => {}} onLogoClick={() => setView('DASHBOARD')} onContactClick={() => setView('CONTACT')} onHelpClick={() => setView('HELP')} notifications={notifications}>
             <ProfileView 
                 user={user} 
                 onUpdate={(updates) => {
@@ -622,7 +644,7 @@ export default function App() {
 
   if (view === 'CONTACT' && user) {
     return (
-        <Layout user={user} onLogout={() => setView('LOGIN')} onProfileClick={() => setView('PROFILE')} onLogoClick={() => setView('DASHBOARD')} onContactClick={() => {}} onHelpClick={() => setView('HELP')} notifications={notifications}>
+        <Layout user={user} onLogout={() => { if (auth) signOut(auth); setUser(null); setView('LOGIN'); }} onProfileClick={() => setView('PROFILE')} onLogoClick={() => setView('DASHBOARD')} onContactClick={() => {}} onHelpClick={() => setView('HELP')} notifications={notifications}>
             <ContactUs user={user} onBack={() => setView('DASHBOARD')} />
         </Layout>
     );
@@ -630,7 +652,7 @@ export default function App() {
 
   if (view === 'HELP' && user) {
       return (
-          <Layout user={user} onLogout={() => setView('LOGIN')} onProfileClick={() => setView('PROFILE')} onLogoClick={() => setView('DASHBOARD')} onContactClick={() => setView('CONTACT')} onHelpClick={() => {}} notifications={notifications}>
+          <Layout user={user} onLogout={() => { if (auth) signOut(auth); setUser(null); setView('LOGIN'); }} onProfileClick={() => setView('PROFILE')} onLogoClick={() => setView('DASHBOARD')} onContactClick={() => setView('CONTACT')} onHelpClick={() => {}} notifications={notifications}>
               <HelpFAQ onBack={() => setView('DASHBOARD')} onContact={() => setView('CONTACT')} />
           </Layout>
       );
@@ -639,7 +661,7 @@ export default function App() {
   return (
     <Layout 
         user={user} 
-        onLogout={() => { setUser(null); setView('LOGIN'); }} 
+        onLogout={() => { if (auth) signOut(auth); setUser(null); setView('LOGIN'); }} 
         onProfileClick={() => setView('PROFILE')}
         onLogoClick={() => setView('DASHBOARD')}
         onContactClick={() => setView('CONTACT')}
