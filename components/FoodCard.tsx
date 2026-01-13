@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { FoodPosting, User, UserRole, FoodStatus } from '../types';
 import DirectionsModal from './DirectionsModal';
@@ -312,18 +311,26 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
              )}
         </div>
 
-        {/* Chat Button (Only if involved) */}
-        {isInvolved && onChatClick && (
-            <div className="absolute top-5 left-5 z-20">
+        {/* Action Buttons (Share & Chat) */}
+        <div className="absolute top-5 left-5 z-20 flex flex-col gap-3">
+             <button 
+                onClick={(e) => { e.stopPropagation(); handleShare(); }}
+                className="p-3 rounded-full bg-white/20 backdrop-blur-md text-white hover:bg-white hover:text-blue-600 border border-white/20 transition-all shadow-lg group/share"
+                title="Share details"
+            >
+                <svg className="w-5 h-5 group-hover/share:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+            </button>
+
+            {isInvolved && onChatClick && (
                 <button 
-                    onClick={() => onChatClick(posting.id)}
-                    className="p-3 rounded-full bg-white/20 backdrop-blur-md text-white hover:bg-white hover:text-emerald-600 border border-white/20 transition-all shadow-lg"
+                    onClick={(e) => { e.stopPropagation(); onChatClick(posting.id); }}
+                    className="p-3 rounded-full bg-white/20 backdrop-blur-md text-white hover:bg-white hover:text-emerald-600 border border-white/20 transition-all shadow-lg group/chat"
                     title="Chat with group"
                 >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                    <svg className="w-5 h-5 group-hover/chat:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
                 </button>
-            </div>
-        )}
+            )}
+        </div>
 
         {/* Bottom Content Info */}
         <div className="absolute bottom-6 left-6 right-6 text-white z-20">
