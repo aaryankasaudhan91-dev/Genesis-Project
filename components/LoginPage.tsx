@@ -950,6 +950,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                                             ) : (
                                                 <>
                                                     <option>Orphanage</option>
+                                                    <option>Oldcarehome</option>
                                                     <option>Shelter</option>
                                                     <option>NGO</option>
                                                 </>
