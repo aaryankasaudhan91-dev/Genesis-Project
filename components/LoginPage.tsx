@@ -8,6 +8,7 @@ import {
     googleProvider, 
     signInWithPopup, 
     sendPasswordResetEmail, 
+    confirmPasswordReset,
     RecaptchaVerifier, 
     signInWithPhoneNumber,
     signInWithEmailAndPassword,
@@ -20,7 +21,7 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
-  const [view, setView] = useState<'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD' | 'PHONE_LOGIN' | 'PHONE_OTP'>('LOGIN');
+  const [view, setView] = useState<'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD' | 'NEW_PASSWORD' | 'PHONE_LOGIN' | 'PHONE_OTP'>('LOGIN');
   const [isAnimating, setIsAnimating] = useState(false);
   
   // --- LOGIN STATE ---
@@ -36,6 +37,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   // --- FORGOT PASSWORD STATE ---
   const [forgotEmail, setForgotEmail] = useState('');
   const [isResetSent, setIsResetSent] = useState(false);
+
+  // --- NEW PASSWORD STATE ---
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordResetSuccess, setPasswordResetSuccess] = useState(false);
   
   // --- REGISTER STATE ---
   const [regName, setRegName] = useState('');
@@ -59,6 +66,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    // Check for Firebase Password Reset URL parameters
+    const queryParams = new URLSearchParams(window.location.search);
+    const mode = queryParams.get('mode');
+    const oobCode = queryParams.get('oobCode');
+
+    if (mode === 'resetPassword' && oobCode) {
+        setResetCode(oobCode);
+        setView('NEW_PASSWORD');
+    }
+
     // Clean up recaptcha on unmount
     return () => {
         if (recaptchaVerifierRef.current) {
@@ -67,7 +84,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     };
   }, []);
 
-  const switchView = (newView: 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD' | 'PHONE_LOGIN' | 'PHONE_OTP') => {
+  const switchView = (newView: 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD' | 'NEW_PASSWORD' | 'PHONE_LOGIN' | 'PHONE_OTP') => {
     setError('');
     setIsAnimating(true);
     setTimeout(() => {
@@ -75,6 +92,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       if (newView === 'FORGOT_PASSWORD') {
           setForgotEmail('');
           setIsResetSent(false);
+      }
+      if (newView === 'NEW_PASSWORD') {
+          setPasswordResetSuccess(false);
+          setNewPassword('');
+          setConfirmNewPassword('');
       }
       if (newView === 'PHONE_LOGIN') {
           setPhoneForAuth('');
@@ -249,6 +271,39 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     setLoading(false);
   };
 
+  const handleNewPasswordSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setError('');
+      setLoading(true);
+
+      if (newPassword.length < 6) {
+          setError("Password must be at least 6 characters.");
+          setLoading(false);
+          return;
+      }
+
+      if (newPassword !== confirmNewPassword) {
+          setError("Passwords do not match.");
+          setLoading(false);
+          return;
+      }
+
+      try {
+          await confirmPasswordReset(auth, resetCode || 'simulated-code', newPassword);
+          setPasswordResetSuccess(true);
+      } catch (e: any) {
+          console.error("New password error:", e);
+          if (e.code === 'auth/expired-action-code') {
+              setError("This link has expired. Please request a new one.");
+          } else if (e.code === 'auth/invalid-action-code') {
+              setError("Invalid reset link.");
+          } else {
+              setError("Failed to reset password. Please try again.");
+          }
+      }
+      setLoading(false);
+  };
+
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -266,8 +321,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         if (!existingUser) {
             // User authenticated but no profile data found locally
             // This happens if a user clears local storage but account exists in Firebase
-            // In a real app with DB, we'd fetch profile here.
-            // For now, prompt to re-register/complete profile
             setRegEmail(loginEmail);
             switchView('REGISTER');
             setTimeout(() => setError("Profile not found locally. Please re-enter details."), 600);
@@ -307,18 +360,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     try {
         let firebaseUser;
         
-        // Check if user is already signed in (e.g. via Phone Auth flow or incomplete Social Login)
         if (auth.currentUser) {
             firebaseUser = auth.currentUser;
-            // Update the existing profile (Linking this registration to the active Phone session)
             await updateProfile(firebaseUser, {
                 displayName: regName,
                 photoURL: regProfilePic
             });
-            // Note: We are not linking the email credential here to avoid complexity,
-            // but we are associating the email in our local storage.
         } else {
-            // Create new user in Firebase (Email/Password flow)
             const userCredential = await createUserWithEmailAndPassword(auth, regEmail, regPassword);
             firebaseUser = userCredential.user;
             await updateProfile(firebaseUser, {
@@ -327,12 +375,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             });
         }
 
-        // Save profile to Local Storage (acting as Database)
         const newUser: User = {
-            id: firebaseUser.uid, // Use Firebase UID (consistent across sessions)
+            id: firebaseUser.uid, 
             name: regName,
             email: regEmail,
-            // Don't store password locally when using Firebase
             contactNo: regPhone,
             role: regRole,
             orgName: regRole !== UserRole.VOLUNTEER ? regOrgName : undefined,
@@ -386,14 +432,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 
                 <div className={`transition-all duration-500 ${isAnimating ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}`}>
                     <h2 className="text-4xl md:text-5xl font-black leading-tight mb-6 tracking-tight">
-                        {view === 'LOGIN' || view === 'PHONE_LOGIN' || view === 'PHONE_OTP' ? 'Welcome Back.' : view === 'REGISTER' ? 'Join the Mission.' : 'Rest Easy.'}
+                        {view === 'LOGIN' || view === 'PHONE_LOGIN' || view === 'PHONE_OTP' ? 'Welcome Back.' : 
+                         view === 'REGISTER' ? 'Join the Mission.' : 
+                         view === 'NEW_PASSWORD' ? 'Secure Your Account.' : 'Rest Easy.'}
                     </h2>
                     <p className="text-slate-400 font-medium text-lg leading-relaxed max-w-xs">
                         {view === 'LOGIN' || view === 'PHONE_LOGIN' || view === 'PHONE_OTP'
                             ? 'Connect to rescue food, feed communities, and create impact.' 
                             : view === 'REGISTER'
                                 ? 'Create an account to become a food donor, volunteer, or beneficiary.'
-                                : 'We will help you recover your access in no time.'}
+                                : view === 'NEW_PASSWORD' 
+                                    ? 'Create a strong new password to protect your account.'
+                                    : 'We will help you recover your access in no time.'}
                     </p>
                 </div>
             </div>
@@ -518,13 +568,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                             </div>
                             <h4 className="font-bold text-slate-800 mb-2">Check your email</h4>
                             <p className="text-xs text-slate-500 mb-6">We've sent a reset link to <span className="font-bold">{forgotEmail}</span>.</p>
-                            <button 
-                                onClick={handleForgotSubmit}
-                                disabled={loading}
-                                className="text-emerald-600 font-bold text-xs uppercase tracking-wider hover:underline disabled:opacity-50"
-                            >
-                                {loading ? 'Sending...' : 'Resend Link'}
-                            </button>
+                            
+                            <div className="flex flex-col gap-3">
+                                <button 
+                                    onClick={handleForgotSubmit}
+                                    disabled={loading}
+                                    className="text-emerald-600 font-bold text-xs uppercase tracking-wider hover:underline disabled:opacity-50"
+                                >
+                                    {loading ? 'Sending...' : 'Resend Link'}
+                                </button>
+                                
+                                {/* Dev Tool for Simulation */}
+                                <button 
+                                    onClick={() => switchView('NEW_PASSWORD')}
+                                    className="text-[10px] text-slate-400 font-bold uppercase tracking-wider hover:text-slate-600 border border-dashed border-slate-300 rounded-lg py-2 px-4"
+                                >
+                                    (Dev Only) Simulate Click Link
+                                </button>
+                            </div>
                         </div>
                     ) : (
                         <form onSubmit={handleForgotSubmit} className="space-y-5">
@@ -555,6 +616,76 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                                 Send Reset Link
                             </button>
                         </form>
+                    )}
+                </div>
+            )}
+
+            {view === 'NEW_PASSWORD' && (
+                <div className="max-w-sm mx-auto mt-4">
+                    <button onClick={() => switchView('LOGIN')} className="mb-6 text-xs font-bold text-slate-400 hover:text-slate-600 flex items-center gap-1">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+                        Back to Login
+                    </button>
+                    
+                    {passwordResetSuccess ? (
+                         <div className="text-center animate-fade-in-up">
+                            <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-100">
+                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                            </div>
+                            <h3 className="text-xl font-black text-slate-800 mb-2">Password Updated!</h3>
+                            <p className="text-slate-500 font-medium text-sm mb-8">You can now sign in with your new password.</p>
+                            <button 
+                                onClick={() => switchView('LOGIN')} 
+                                className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest hover:bg-slate-800 transition-all"
+                            >
+                                Sign In Now
+                            </button>
+                        </div>
+                    ) : (
+                        <>
+                            <h3 className="text-2xl font-black text-slate-800 mb-2">Create New Password</h3>
+                            <p className="text-slate-500 font-medium text-sm mb-8">Please enter a strong new password for your account.</p>
+
+                            <form onSubmit={handleNewPasswordSubmit} className="space-y-5">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">New Password</label>
+                                    <input 
+                                        type="password" 
+                                        value={newPassword} 
+                                        onChange={e => setNewPassword(e.target.value)} 
+                                        placeholder="Min. 6 characters"
+                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
+                                    />
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Confirm Password</label>
+                                    <input 
+                                        type="password" 
+                                        value={confirmNewPassword} 
+                                        onChange={e => setConfirmNewPassword(e.target.value)} 
+                                        placeholder="Re-enter password"
+                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
+                                    />
+                                </div>
+
+                                {error && (
+                                    <div className="animate-fade-in-up p-3 bg-rose-50 rounded-xl flex items-center gap-3 border border-rose-100">
+                                        <svg className="w-5 h-5 text-rose-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        <p className="text-rose-600 text-xs font-bold leading-tight">{error}</p>
+                                    </div>
+                                )}
+
+                                <button 
+                                    type="submit" 
+                                    disabled={loading}
+                                    className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-xl shadow-slate-200 hover:bg-slate-800 hover:-translate-y-0.5 hover:shadow-2xl transition-all disabled:opacity-70 disabled:transform-none flex justify-center items-center gap-3"
+                                >
+                                    {loading && <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
+                                    Reset Password
+                                </button>
+                            </form>
+                        </>
                     )}
                 </div>
             )}
