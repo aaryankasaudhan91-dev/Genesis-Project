@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User, UserRole, FoodPosting, FoodStatus, Notification, Rating } from './types';
 import { storage } from './services/storageService';
-import { analyzeFoodSafetyImage, reverseGeocode } from './services/geminiService';
+import { analyzeFoodSafetyImage } from './services/geminiService';
+import { reverseGeocodeGoogle } from './services/mapLoader';
 import { auth, onAuthStateChanged, signOut } from './services/firebaseConfig';
 import Layout from './components/Layout';
 import FoodCard from './components/FoodCard';
@@ -316,7 +317,7 @@ export default function App() {
         async (pos) => {
             const { latitude, longitude } = pos.coords;
             try {
-                const address = await reverseGeocode(latitude, longitude);
+                const address = await reverseGeocodeGoogle(latitude, longitude);
                 if (address) {
                     setFoodLine1(address.line1);
                     setFoodLine2(address.line2);
@@ -388,7 +389,7 @@ export default function App() {
       foodName, 
       description: foodDescription,
       quantity: `${quantityNum} ${unit}`,
-      location: { line1: foodLine1, line2: foodLine2, landmark: foodLandmark, pincode: foodPincode },
+      location: { line1: foodLine1, line2: foodLine2, landmark: foodLandmark, pincode: foodPincode, lat: userLocation?.lat, lng: userLocation?.lng },
       expiryDate, 
       status: FoodStatus.AVAILABLE, 
       imageUrl: foodImage, 

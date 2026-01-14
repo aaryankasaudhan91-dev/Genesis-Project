@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef } from 'react';
-import { reverseGeocode, ReverseGeocodeResult } from '../services/geminiService';
+import { reverseGeocodeGoogle, ReverseGeocodeResult } from '../services/mapLoader';
 import { loadGoogleMaps } from '../services/mapLoader';
 
 declare const google: any;
@@ -45,7 +45,7 @@ const LocationPickerMap: React.FC<LocationPickerMapProps> = ({ lat, lng, onLocat
                   onLocationSelect(newLat, newLng);
                   
                   if (onAddressFound) {
-                      const addr = await reverseGeocode(newLat, newLng);
+                      const addr = await reverseGeocodeGoogle(newLat, newLng);
                       if (addr) onAddressFound(addr);
                   }
               }

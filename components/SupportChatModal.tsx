@@ -32,7 +32,7 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
   useEffect(() => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     chatSessionRef.current = ai.chats.create({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       config: {
         systemInstruction: `You are the friendly and helpful AI Support Agent for 'MEALers connect', a food rescue application. 
         

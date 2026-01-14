@@ -30,7 +30,7 @@ export const analyzeFoodSafetyImage = async (base64Data: string): Promise<ImageA
   try {
     const data = base64Data.split(',')[1] || base64Data;
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: {
         parts: [
           {
@@ -76,7 +76,7 @@ export const verifyPickupImage = async (base64Data: string): Promise<{ isValid: 
   try {
     const data = base64Data.split(',')[1] || base64Data;
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: {
         parts: [
           {
@@ -114,7 +114,7 @@ export const verifyDeliveryImage = async (base64Data: string): Promise<{ isValid
   try {
     const data = base64Data.split(',')[1] || base64Data;
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: {
         parts: [
           {
@@ -155,6 +155,7 @@ export interface ReverseGeocodeResult {
   pincode: string;
 }
 
+// Maps grounding is only supported in Gemini 2.5 series models.
 export const reverseGeocode = async (lat: number, lng: number): Promise<ReverseGeocodeResult | null> => {
   try {
     const response = await ai.models.generateContent({
@@ -199,6 +200,7 @@ export const reverseGeocode = async (lat: number, lng: number): Promise<ReverseG
   }
 };
 
+// Maps grounding is only supported in Gemini 2.5 series models.
 export const getAddressFromPincode = async (pincode: string): Promise<ReverseGeocodeResult | null> => {
   try {
     const response = await ai.models.generateContent({
@@ -223,6 +225,7 @@ export const getAddressFromPincode = async (pincode: string): Promise<ReverseGeo
   }
 };
 
+// Maps grounding is only supported in Gemini 2.5 series models.
 export const getRouteInsights = async (location: string, userLat?: number, userLng?: number) => {
   try {
     const response = await ai.models.generateContent({
@@ -259,6 +262,7 @@ export interface RouteOptimizationResult {
   trafficTips: string;
 }
 
+// Maps grounding is only supported in Gemini 2.5 series models.
 export const getOptimizedRoute = async (origin: string, destination: string, waypoint?: string): Promise<RouteOptimizationResult | null> => {
   try {
     const routeDesc = waypoint 
@@ -287,6 +291,7 @@ export const getOptimizedRoute = async (origin: string, destination: string, way
   }
 };
 
+// Maps grounding is only supported in Gemini 2.5 series models.
 export const calculateLiveEta = async (
   origin: { lat: number; lng: number },
   destination: string
@@ -320,7 +325,7 @@ export const calculateLiveEta = async (
 export const generateAvatar = async (userName: string): Promise<string | null> => {
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+      model: 'gemini-3-pro-image-preview',
       contents: {
         parts: [
           {
@@ -328,6 +333,12 @@ export const generateAvatar = async (userName: string): Promise<string | null> =
           },
         ],
       },
+      config: {
+          imageConfig: {
+              aspectRatio: "1:1",
+              imageSize: "1K"
+          }
+      }
     });
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
