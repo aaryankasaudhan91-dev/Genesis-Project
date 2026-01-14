@@ -12,7 +12,9 @@ import {
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
     updateProfile,
-    updatePassword
+    updatePassword,
+    PhoneAuthProvider,
+    signInWithCredential
 } from '../services/firebaseConfig';
 
 interface LoginPageProps {
@@ -26,6 +28,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   // --- LOGIN STATE ---
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
 
   // --- PHONE LOGIN / RECOVERY STATE ---
   const [phoneForAuth, setPhoneForAuth] = useState('');
@@ -33,18 +36,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [confirmationResult, setConfirmationResult] = useState<any>(null);
   const recaptchaVerifierRef = useRef<any>(null);
 
-  // --- FORGOT PASSWORD STATE ---
-  const [forgotInput, setForgotInput] = useState(''); // Accepts Email or Username
-  
   // --- NEW PASSWORD STATE ---
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordResetSuccess, setPasswordResetSuccess] = useState(false);
   
   // --- REGISTER STATE ---
   const [regName, setRegName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
+  const [showRegPassword, setShowRegPassword] = useState(false);
   const [regPhone, setRegPhone] = useState('');
   const [regRole, setRegRole] = useState<UserRole>(UserRole.DONOR);
   const [regOrgName, setRegOrgName] = useState('');
@@ -81,7 +84,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     setTimeout(() => {
       setView(newView);
       if (newView === 'FORGOT_PASSWORD') {
-          setForgotInput('');
           setPhoneForAuth('');
       }
       if (newView === 'NEW_PASSWORD') {
@@ -178,14 +180,31 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           
           const formattedPhone = `+91${phoneNumber.replace(/\D/g, '')}`;
           const result = await signInWithPhoneNumber(auth, formattedPhone, recaptchaVerifierRef.current);
+          
+          // Store result globally (for debugging) and in state
+          (window as any).confirmationResult = result;
           setConfirmationResult(result);
+          
           setLoading(false);
           switchView(nextView);
       } catch (err: any) {
-          console.error(err);
+          console.error("OTP Error:", err);
           setLoading(false);
           setError(err.message || "Failed to send OTP. Ensure phone number is valid.");
+          
           if (recaptchaVerifierRef.current) {
+              // Explicitly reset the grecaptcha widget if available
+              try {
+                  const widgetId = await recaptchaVerifierRef.current.render();
+                  const grecaptcha = (window as any).grecaptcha;
+                  if (grecaptcha && grecaptcha.reset) {
+                      grecaptcha.reset(widgetId);
+                  }
+              } catch (e) {
+                  // Ignore if render fails or grecaptcha is missing
+              }
+
+              // Clear the verifier instance to ensure fresh state
               try { recaptchaVerifierRef.current.clear(); } catch {}
               recaptchaVerifierRef.current = null;
           }
@@ -204,11 +223,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const handleLoginVerifyOtp = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!otp) { setError("Please enter the OTP."); return; }
+      if (!confirmationResult) { setError("Session expired. Please send OTP again."); return; }
+      
       setLoading(true);
       setError('');
 
       try {
-          const result = await confirmationResult.confirm(otp);
+          // Explicitly create credential
+          const credential = PhoneAuthProvider.credential(confirmationResult.verificationId, otp);
+          
+          // Sign in with the credential
+          const result = await signInWithCredential(auth, credential);
+          
+          // User signed in successfully.
           const user = result.user;
           const phoneNumber = user.phoneNumber || '';
 
@@ -230,6 +257,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           setLoading(false);
       } catch (err: any) {
           setLoading(false);
+          console.error(err);
           setError("Invalid OTP. Please try again.");
       }
   };
@@ -240,48 +268,44 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       setError('');
       setLoading(true);
 
-      if (!forgotInput) {
-          setError("Please enter your email or username.");
+      if (!phoneForAuth || phoneForAuth.length < 10) {
+          setError("Please enter your registered 10-digit phone number.");
           setLoading(false);
           return;
       }
 
-      // 1. Find User in Local Storage to get Phone Number
+      // Check if phone number is registered locally
       const users = storage.getUsers();
-      let foundUser = users.find(u => 
-          u.email.toLowerCase() === forgotInput.toLowerCase() || 
-          u.name.toLowerCase() === forgotInput.toLowerCase()
-      );
+      const existingUser = users.find(u => {
+          const uPhone = (u.contactNo || '').replace(/\D/g, '');
+          return uPhone && phoneForAuth.includes(uPhone);
+      });
 
-      if (!foundUser) {
-          setError("Account not found. Please check your details.");
+      if (!existingUser) {
+          setError("This phone number is not registered. Please sign up.");
           setLoading(false);
           return;
       }
 
-      if (!foundUser.contactNo) {
-          setError("No phone number linked to this account. Cannot send OTP.");
-          setLoading(false);
-          return;
-      }
-
-      // 2. Set Phone and Send OTP
-      const cleanPhone = foundUser.contactNo.replace(/\D/g, '');
-      setPhoneForAuth(cleanPhone);
-      
-      // We will treat this as "Authenticating to Reset"
-      sendOtp(cleanPhone, 'FORGOT_OTP');
+      // Send OTP
+      sendOtp(phoneForAuth, 'FORGOT_OTP');
   };
 
   const handleForgotVerifyOtp = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!otp) { setError("Please enter the OTP."); return; }
+      if (!confirmationResult) { setError("Session expired. Please send OTP again."); return; }
+
       setLoading(true);
       setError('');
 
       try {
-          // 1. Verify OTP - This effectively LOGS THE USER IN via Firebase Phone Auth
-          await confirmationResult.confirm(otp);
+          // Explicitly create credential
+          const credential = PhoneAuthProvider.credential(confirmationResult.verificationId, otp);
+          
+          // Sign in with the credential
+          const result = await signInWithCredential(auth, credential);
+          const user = result.user;
           
           // 2. Now user is auth.currentUser. We can proceed to set password.
           setLoading(false);
@@ -289,7 +313,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       } catch (err: any) {
           console.error(err);
           setLoading(false);
-          setError("Invalid OTP. Please try again.");
+          setError("Invalid verification code. Please try again.");
       }
   };
 
@@ -432,6 +456,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     }
   };
 
+  const renderPasswordToggle = (show: boolean, setShow: (val: boolean) => void) => (
+      <button 
+          type="button"
+          onClick={() => setShow(!show)}
+          className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors focus:outline-none"
+          title={show ? "Hide password" : "Show password"}
+      >
+          {show ? (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+          ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+          )}
+      </button>
+  );
+
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 md:p-6 font-sans">
       <div id="recaptcha-container"></div>
@@ -507,13 +546,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
                         <div className="space-y-1">
                             <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
-                            <input 
-                                type="password" 
-                                value={loginPassword} 
-                                onChange={e => setLoginPassword(e.target.value)} 
-                                placeholder="••••••••"
-                                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
-                            />
+                            <div className="relative">
+                                <input 
+                                    type={showLoginPassword ? "text" : "password"}
+                                    value={loginPassword} 
+                                    onChange={e => setLoginPassword(e.target.value)} 
+                                    placeholder="••••••••"
+                                    className="w-full pl-5 pr-12 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
+                                />
+                                {renderPasswordToggle(showLoginPassword, setShowLoginPassword)}
+                            </div>
                             <div className="text-right">
                                 <button type="button" onClick={() => switchView('FORGOT_PASSWORD')} className="text-[10px] font-bold text-slate-400 hover:text-emerald-600 transition-colors uppercase tracking-wider">Forgot Password?</button>
                             </div>
@@ -582,18 +624,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                         Back to Login
                     </button>
                     <h3 className="text-2xl font-black text-slate-800 mb-2">Reset Password</h3>
-                    <p className="text-slate-500 font-medium text-sm mb-8">Enter your registered email or username. We will authenticate you using your linked phone number.</p>
+                    <p className="text-slate-500 font-medium text-sm mb-8">Authenticate using your registered phone number to reset your password instantly.</p>
                     
                     <form onSubmit={handleForgotIdentifyUser} className="space-y-5">
                         <div className="space-y-1">
-                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Email or Username</label>
-                            <input 
-                                type="text" 
-                                value={forgotInput} 
-                                onChange={e => setForgotInput(e.target.value)} 
-                                placeholder="john@example.com or JohnDoe"
-                                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
-                            />
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Registered Phone Number</label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                                    <span className="text-slate-500 font-bold text-sm border-r border-slate-300 pr-2">+91</span>
+                                </div>
+                                <input 
+                                    type="tel" 
+                                    maxLength={10}
+                                    value={phoneForAuth} 
+                                    onChange={e => setPhoneForAuth(e.target.value.replace(/\D/g, ''))} 
+                                    placeholder="9876543210"
+                                    className="w-full pl-20 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
+                                />
+                            </div>
                         </div>
 
                         {error && (
@@ -609,7 +657,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                             className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-xl shadow-slate-200 hover:bg-slate-800 hover:-translate-y-0.5 hover:shadow-2xl transition-all disabled:opacity-70 disabled:transform-none flex justify-center items-center gap-3"
                         >
                             {loading && <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
-                            Send OTP to Phone
+                            Verify & Proceed
                         </button>
                     </form>
                 </div>
@@ -620,10 +668,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 <div className="max-w-sm mx-auto mt-4">
                      <button onClick={() => switchView('FORGOT_PASSWORD')} className="mb-6 text-xs font-bold text-slate-400 hover:text-slate-600 flex items-center gap-1">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
-                        Change User
+                        Change Number
                     </button>
                     <h3 className="text-2xl font-black text-slate-800 mb-2">Verify Identity</h3>
-                    <p className="text-slate-500 font-medium text-sm mb-8">Enter the code sent to your registered phone number ending in <span className="font-bold text-slate-800">...{phoneForAuth.slice(-4)}</span></p>
+                    <p className="text-slate-500 font-medium text-sm mb-8">Enter the code sent to your phone <span className="font-bold text-slate-800">+91 {phoneForAuth}</span>.</p>
                     
                     <form onSubmit={handleForgotVerifyOtp} className="space-y-5">
                         <div className="space-y-1">
@@ -681,24 +729,30 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                             <form onSubmit={handleNewPasswordSubmit} className="space-y-5">
                                 <div className="space-y-1">
                                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">New Password</label>
-                                    <input 
-                                        type="password" 
-                                        value={newPassword} 
-                                        onChange={e => setNewPassword(e.target.value)} 
-                                        placeholder="Min. 6 characters"
-                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
-                                    />
+                                    <div className="relative">
+                                        <input 
+                                            type={showNewPassword ? "text" : "password"} 
+                                            value={newPassword} 
+                                            onChange={e => setNewPassword(e.target.value)} 
+                                            placeholder="Min. 6 characters"
+                                            className="w-full pl-5 pr-12 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
+                                        />
+                                        {renderPasswordToggle(showNewPassword, setShowNewPassword)}
+                                    </div>
                                 </div>
 
                                 <div className="space-y-1">
                                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Confirm Password</label>
-                                    <input 
-                                        type="password" 
-                                        value={confirmNewPassword} 
-                                        onChange={e => setConfirmNewPassword(e.target.value)} 
-                                        placeholder="Re-enter password"
-                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
-                                    />
+                                    <div className="relative">
+                                        <input 
+                                            type={showConfirmPassword ? "text" : "password"} 
+                                            value={confirmNewPassword} 
+                                            onChange={e => setConfirmNewPassword(e.target.value)} 
+                                            placeholder="Re-enter password"
+                                            className="w-full pl-5 pr-12 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
+                                        />
+                                        {renderPasswordToggle(showConfirmPassword, setShowConfirmPassword)}
+                                    </div>
                                 </div>
 
                                 {error && (
@@ -722,6 +776,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 </div>
             )}
 
+            {/* Other views (PHONE_LOGIN, PHONE_OTP, REGISTER) remain unchanged */}
             {view === 'PHONE_LOGIN' && (
                 <div className="max-w-sm mx-auto mt-4">
                     <button onClick={() => switchView('LOGIN')} className="mb-6 text-xs font-bold text-slate-400 hover:text-slate-600 flex items-center gap-1">
@@ -806,7 +861,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 </div>
             )}
             
-            {/* Registration view kept as is from previous implementation (omitted for brevity as it was not changed) */}
+            {/* Registration View */}
             {view === 'REGISTER' && (
                 <div className="max-w-md mx-auto">
                     <div className="flex justify-between items-center mb-6">
@@ -861,7 +916,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
                             <div className="space-y-1">
                                 <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
-                                <input type="password" value={regPassword} onChange={e => setRegPassword(e.target.value)} required placeholder="Create a strong password" minLength={6} className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" />
+                                <div className="relative">
+                                    <input 
+                                        type={showRegPassword ? "text" : "password"} 
+                                        value={regPassword} 
+                                        onChange={e => setRegPassword(e.target.value)} 
+                                        required 
+                                        placeholder="Create a strong password" 
+                                        minLength={6} 
+                                        className="w-full pl-5 pr-12 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" 
+                                    />
+                                    {renderPasswordToggle(showRegPassword, setShowRegPassword)}
+                                </div>
                                 <p className="text-[10px] text-slate-400 font-bold px-1">Must be at least 6 characters.</p>
                             </div>
 

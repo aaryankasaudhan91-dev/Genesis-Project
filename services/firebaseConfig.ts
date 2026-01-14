@@ -8,12 +8,12 @@ import {
     signInWithPopup as firebaseSignInWithPopup, 
     signInWithEmailAndPassword as firebaseSignInWithEmailAndPassword, 
     createUserWithEmailAndPassword as firebaseCreateUserWithEmailAndPassword, 
-    sendPasswordResetEmail as firebaseSendPasswordResetEmail, 
-    confirmPasswordReset as firebaseConfirmPasswordReset,
     updatePassword as firebaseUpdatePassword,
     onAuthStateChanged as firebaseOnAuthStateChanged, 
     signOut as firebaseSignOut, 
-    updateProfile as firebaseUpdateProfile 
+    updateProfile as firebaseUpdateProfile,
+    PhoneAuthProvider as FirebasePhoneAuthProvider,
+    signInWithCredential as firebaseSignInWithCredential
 } from "firebase/auth";
 
 const firebaseConfig = {
@@ -103,20 +103,18 @@ const signInWithPhoneNumber = async (authArg: any, phone: string, verifier: any)
     } as any;
 };
 
-const sendPasswordResetEmail = async (authArg: any, email: string) => {
-    if (isConfigured) return firebaseSendPasswordResetEmail(authArg, email);
+const signInWithCredential = async (authArg: any, credential: any) => {
+    if (isConfigured) return firebaseSignInWithCredential(authArg, credential);
+
+    await new Promise(r => setTimeout(r, 800));
     
-    await new Promise(r => setTimeout(r, 800));
-    console.log(`[Simulation] Password reset link sent to ${email}`);
-    return;
-};
+    // Simulate OTP validation
+    if (credential && credential.smsCode && credential.smsCode !== '123456') {
+        throw new Error("Invalid OTP (Simulation: Use 123456)");
+    }
 
-const confirmPasswordReset = async (authArg: any, oobCode: string, newPassword: string) => {
-    if (isConfigured) return firebaseConfirmPasswordReset(authArg, oobCode, newPassword);
-
-    await new Promise(r => setTimeout(r, 800));
-    console.log(`[Simulation] Password reset confirmed with code ${oobCode}`);
-    return;
+    console.log(`[Simulation] Signed in with credential`);
+    return { user: { ...mockUser } } as any;
 };
 
 const updatePassword = async (user: any, newPassword: string) => {
@@ -158,6 +156,13 @@ class MockRecaptchaVerifier {
 
 const RecaptchaVerifier = isConfigured ? FirebaseRecaptchaVerifier : MockRecaptchaVerifier;
 
+// PhoneAuthProvider Wrapper
+const PhoneAuthProvider = isConfigured ? FirebasePhoneAuthProvider : class {
+    static credential(verificationId: string, smsCode: string) {
+        return { verificationId, smsCode, providerId: 'phone' };
+    }
+} as any;
+
 export { 
     auth, 
     googleProvider, 
@@ -166,10 +171,10 @@ export {
     signInWithPopup, 
     signInWithEmailAndPassword, 
     createUserWithEmailAndPassword, 
-    sendPasswordResetEmail, 
-    confirmPasswordReset,
     updatePassword,
     onAuthStateChanged, 
     signOut, 
-    updateProfile 
+    updateProfile,
+    PhoneAuthProvider,
+    signInWithCredential
 };

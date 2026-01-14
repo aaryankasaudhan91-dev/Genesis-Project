@@ -1,6 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { User } from '../types';
+import { GoogleGenAI } from "@google/genai";
 
 interface SupportChatModalProps {
   user: User;
@@ -19,7 +20,7 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
     {
       id: 'welcome',
       sender: 'ai',
-      text: `Hello ${user.name.split(' ')[0]}! 👋 I'm your AI Support Assistant powered by DeepSeek. How can I help you rescue food today?`,
+      text: `Hello ${user.name.split(' ')[0]}! 👋 I'm your Gemini Support Assistant. How can I help you rescue food today?`,
       timestamp: Date.now()
     }
   ]);
@@ -44,7 +45,8 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
       const apiKey = process.env.API_KEY;
       if (!apiKey) throw new Error("API Key missing");
 
-      // Enhanced System Prompt for DeepSeek
+      const ai = new GoogleGenAI({ apiKey });
+
       const systemPrompt = `
         You are "RescueBot", the AI support agent for 'MEALers connect'.
         
@@ -64,35 +66,25 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
         - Answer as if you are a helpful team member.
       `;
 
-      // Construct conversation history
-      const apiMessages = [
-          { role: "system", content: systemPrompt },
-          ...messages.slice(-6).map(m => ({ 
-              role: m.sender === 'user' ? 'user' : 'assistant', 
-              content: m.text 
-          })),
-          { role: "user", content: userMsg.text }
-      ];
+      // Construct history for Gemini from local messages state
+      // We take the last 10 messages to keep context window manageable
+      const history = messages.slice(-10).map(m => ({
+          role: m.sender === 'user' ? 'user' : 'model',
+          parts: [{ text: m.text }]
+      }));
 
-      const response = await fetch('https://api.deepseek.com/chat/completions', {
-          method: 'POST',
-          headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-              model: "deepseek-chat",
-              messages: apiMessages,
-              stream: false,
-              temperature: 0.7,
-              max_tokens: 300
-          })
+      const chat = ai.chats.create({
+          model: 'gemini-3-flash-preview',
+          history: history,
+          config: {
+              systemInstruction: systemPrompt,
+              maxOutputTokens: 300,
+              temperature: 0.7
+          }
       });
 
-      if (!response.ok) throw new Error("API Request failed");
-
-      const data = await response.json();
-      const aiText = data.choices?.[0]?.message?.content || "I'm thinking... could you rephrase that?";
+      const result = await chat.sendMessage({ message: userMsg.text });
+      const aiText = result.text || "I'm thinking... could you rephrase that?";
 
       setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: aiText, timestamp: Date.now() }]);
     } catch (err) {
@@ -110,8 +102,8 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
             <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-xl backdrop-blur-md border border-white/10">🤖</div>
                 <div>
-                    <h3 className="font-black text-white text-sm uppercase tracking-wide">DeepSeek Support</h3>
-                    <p className="text-slate-400 text-xs font-medium">Powered by AI</p>
+                    <h3 className="font-black text-white text-sm uppercase tracking-wide">Gemini Support</h3>
+                    <p className="text-slate-400 text-xs font-medium">Powered by Google AI</p>
                 </div>
             </div>
             <button onClick={onClose} className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors">
