@@ -1,6 +1,5 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI } from "@google/genai";
 import { User } from '../types';
 
 interface SupportChatModalProps {
@@ -20,41 +19,13 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
     {
       id: 'welcome',
       sender: 'ai',
-      text: `Hello ${user.name.split(' ')[0]}! 👋 I'm your AI Support Assistant. Ask me anything about using MEALers connect!`,
+      text: `Hello ${user.name.split(' ')[0]}! 👋 I'm your AI Support Assistant powered by DeepSeek. How can I help you rescue food today?`,
       timestamp: Date.now()
     }
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatSessionRef = useRef<any>(null);
-
-  useEffect(() => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    chatSessionRef.current = ai.chats.create({
-      model: 'gemini-3-flash-preview',
-      config: {
-        systemInstruction: `You are the friendly and helpful AI Support Agent for 'MEALers connect', a food rescue application. 
-        
-        App Overview:
-        - MEALers connect connects Food Donors (Restaurants, etc.), Volunteers, and Requesters (Orphanages/Shelters).
-        - Goal: Reduce food waste and hunger.
-        
-        Key Features & Troubleshooting:
-        1. Donors: Can post food details, photo (AI safety check), quantity, location. Must verify pickup proofs from volunteers.
-        2. Volunteers: Browse 'Find Food', accept missions, navigate to pickup, upload pickup proof, navigate to dropoff, upload delivery proof.
-        3. Requesters: Browse available food, request pickup (if volunteer needed), or see incoming deliveries. Must verify delivery proofs.
-        4. Verification: 2-step photo verification (Pickup & Delivery) ensures security. AI checks photos.
-        5. Impact Points: Earned by Donors and Volunteers for successful cycles.
-        
-        Support Info:
-        - If a user has a technical error, suggest refreshing or checking internet.
-        - For urgent issues or if you cannot help, tell them to call Human Support at +91 85910 95318.
-        
-        Tone: Professional, empathetic, concise, and using emojis occasionally.`,
-      },
-    });
-  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -70,12 +41,63 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
     setIsTyping(true);
 
     try {
-      if (chatSessionRef.current) {
-          const result = await chatSessionRef.current.sendMessage({ message: userMsg.text });
-          setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: result.text, timestamp: Date.now() }]);
-      }
+      const apiKey = process.env.API_KEY;
+      if (!apiKey) throw new Error("API Key missing");
+
+      // Enhanced System Prompt for DeepSeek
+      const systemPrompt = `
+        You are "RescueBot", the AI support agent for 'MEALers connect'.
+        
+        Current User Context:
+        - Name: ${user.name}
+        - Role: ${user.role}
+        
+        Platform Knowledge:
+        1. Donors post food. Volunteers deliver it. Requesters (Orphanages) receive it.
+        2. Safety is priority. We use AI to check food, but manual verification is mandatory.
+        3. App flows: Post Food -> Volunteer Accepts -> Pickup Verification -> Delivery -> Dropoff Verification.
+        
+        Guidelines:
+        - Be friendly, concise, and solution-oriented.
+        - If the user has a technical issue, suggest checking their internet or restarting the app.
+        - For urgent safety issues, tell them to call the helpline: +91 85910 95318.
+        - Answer as if you are a helpful team member.
+      `;
+
+      // Construct conversation history
+      const apiMessages = [
+          { role: "system", content: systemPrompt },
+          ...messages.slice(-6).map(m => ({ 
+              role: m.sender === 'user' ? 'user' : 'assistant', 
+              content: m.text 
+          })),
+          { role: "user", content: userMsg.text }
+      ];
+
+      const response = await fetch('https://api.deepseek.com/chat/completions', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+              model: "deepseek-chat",
+              messages: apiMessages,
+              stream: false,
+              temperature: 0.7,
+              max_tokens: 300
+          })
+      });
+
+      if (!response.ok) throw new Error("API Request failed");
+
+      const data = await response.json();
+      const aiText = data.choices?.[0]?.message?.content || "I'm thinking... could you rephrase that?";
+
+      setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: aiText, timestamp: Date.now() }]);
     } catch (err) {
-        setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: "I'm having trouble connecting to the server. Please try again later.", timestamp: Date.now() }]);
+        console.error(err);
+        setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: "I'm currently offline. Please try again later or contact support manually.", timestamp: Date.now() }]);
     } finally {
         setIsTyping(false);
     }
@@ -88,8 +110,8 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
             <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-xl backdrop-blur-md border border-white/10">🤖</div>
                 <div>
-                    <h3 className="font-black text-white text-sm uppercase tracking-wide">AI Support</h3>
-                    <p className="text-slate-400 text-xs font-medium">Always here to help</p>
+                    <h3 className="font-black text-white text-sm uppercase tracking-wide">DeepSeek Support</h3>
+                    <p className="text-slate-400 text-xs font-medium">Powered by AI</p>
                 </div>
             </div>
             <button onClick={onClose} className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors">
