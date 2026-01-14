@@ -61,11 +61,26 @@ export default function App() {
     if (auth) {
         const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
             if (firebaseUser) {
-                // If we have a firebase user, check if we have a matching app user
-                // This prevents 'flashing' to login screen if local data exists
+                // Link Firebase User to Local Storage User
                 const storedUsers = storage.getUsers();
-                const matchedUser = storedUsers.find(u => u.email === firebaseUser.email);
                 
+                // 1. Try matching by UID (Most reliable)
+                let matchedUser = storedUsers.find(u => u.id === firebaseUser.uid);
+                
+                // 2. Try matching by Email (If registered via different provider)
+                if (!matchedUser && firebaseUser.email) {
+                    matchedUser = storedUsers.find(u => u.email === firebaseUser.email);
+                }
+                
+                // 3. Try matching by Phone (For Phone Auth users)
+                if (!matchedUser && firebaseUser.phoneNumber) {
+                     const fPhone = firebaseUser.phoneNumber.replace(/\D/g, '');
+                     matchedUser = storedUsers.find(u => {
+                         const uPhone = (u.contactNo || '').replace(/\D/g, '');
+                         return uPhone && fPhone.includes(uPhone);
+                     });
+                }
+
                 if (matchedUser && !user) {
                     setUser(matchedUser);
                     setView('DASHBOARD');

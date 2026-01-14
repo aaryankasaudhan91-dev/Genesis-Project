@@ -200,9 +200,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           const phoneNumber = user.phoneNumber || '';
 
           const users = storage.getUsers();
-          // Find user by phone number
+          // Find user by phone number using normalized check
           const existingUser = users.find(u => {
-             // Simple normalization
              const uPhone = (u.contactNo || '').replace(/\D/g, '');
              const inputPhone = phoneNumber.replace(/\D/g, '');
              return uPhone && inputPhone.includes(uPhone);
@@ -306,19 +305,31 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     }
 
     try {
-        // Create user in Firebase
-        const userCredential = await createUserWithEmailAndPassword(auth, regEmail, regPassword);
-        const firebaseUser = userCredential.user;
-
-        // Update Display Name
-        await updateProfile(firebaseUser, {
-            displayName: regName,
-            photoURL: regProfilePic
-        });
+        let firebaseUser;
+        
+        // Check if user is already signed in (e.g. via Phone Auth flow or incomplete Social Login)
+        if (auth.currentUser) {
+            firebaseUser = auth.currentUser;
+            // Update the existing profile (Linking this registration to the active Phone session)
+            await updateProfile(firebaseUser, {
+                displayName: regName,
+                photoURL: regProfilePic
+            });
+            // Note: We are not linking the email credential here to avoid complexity,
+            // but we are associating the email in our local storage.
+        } else {
+            // Create new user in Firebase (Email/Password flow)
+            const userCredential = await createUserWithEmailAndPassword(auth, regEmail, regPassword);
+            firebaseUser = userCredential.user;
+            await updateProfile(firebaseUser, {
+                displayName: regName,
+                photoURL: regProfilePic
+            });
+        }
 
         // Save profile to Local Storage (acting as Database)
         const newUser: User = {
-            id: firebaseUser.uid, // Use Firebase UID
+            id: firebaseUser.uid, // Use Firebase UID (consistent across sessions)
             name: regName,
             email: regEmail,
             // Don't store password locally when using Firebase
@@ -369,7 +380,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                     <div className="text-4xl filter drop-shadow-lg animate-bounce-slow">🍃</div>
                     <div>
                         <h1 className="text-2xl font-black tracking-tighter leading-none">MEALers</h1>
-                        <p className="text-[10px] font-bold text-emerald-400 tracking-[0.3em] uppercase">Connect</p>
+                        <p className="text-slate-400 text-[10px] font-bold tracking-[0.3em] uppercase">Connect</p>
                     </div>
                 </div>
                 
@@ -642,6 +653,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                     </div>
 
                     <form onSubmit={handleRegister} className="space-y-6">
+                        {/* ... form fields remain same ... */}
                         
                         {/* Role Selection */}
                         <div className="bg-slate-50 p-1.5 rounded-2xl flex border border-slate-100">
