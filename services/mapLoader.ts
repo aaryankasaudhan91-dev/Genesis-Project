@@ -10,18 +10,19 @@ export const loadGoogleMaps = (): Promise<void> => {
     loaderPromise = new Promise((resolve, reject) => {
       const apiKey = process.env.API_KEY;
       
-      // Basic validation to prevent loading with clearly invalid keys
+      // Strict validation: Reject if key is missing, "undefined", placeholder, or too short
       if (!apiKey || apiKey === 'undefined' || apiKey.includes('your_') || apiKey.length < 10) {
+          console.warn("Google Maps API Key is invalid or missing. Map will not load.");
           reject(new Error("Invalid or missing Google Maps API Key"));
           return;
       }
 
-      // Handle Google Maps Authentication Failure
+      // Handle Google Maps Authentication Failure (Global Callback)
       const originalAuthFailure = (window as any).gm_authFailure;
       (window as any).gm_authFailure = () => {
-          console.error("Google Maps Authentication Error: Invalid Key");
+          console.error("Google Maps Authentication Error: Invalid Key or Unauthorized Domain");
           if (originalAuthFailure) originalAuthFailure();
-          // We dispatch a custom event so components can react to this global failure
+          // Dispatch custom event for components to handle
           window.dispatchEvent(new Event('google-maps-auth-failure'));
       };
 

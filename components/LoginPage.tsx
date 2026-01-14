@@ -155,7 +155,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const handleSendOtp = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!phoneForAuth || phoneForAuth.length < 10) {
-          setError("Please enter a valid phone number with country code (e.g., +91...)");
+          setError("Please enter a valid 10-digit phone number");
           return;
       }
       setLoading(true);
@@ -169,7 +169,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
               });
           }
           
-          const result = await signInWithPhoneNumber(auth, phoneForAuth, recaptchaVerifierRef.current);
+          const formattedPhone = `+91${phoneForAuth}`;
+          const result = await signInWithPhoneNumber(auth, formattedPhone, recaptchaVerifierRef.current);
           setConfirmationResult(result);
           setLoading(false);
           switchView('PHONE_OTP');
@@ -196,7 +197,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       try {
           const result = await confirmationResult.confirm(otp);
           const user = result.user;
-          const phoneNumber = user.phoneNumber || phoneForAuth;
+          const phoneNumber = user.phoneNumber || '';
 
           const users = storage.getUsers();
           // Find user by phone number
@@ -210,7 +211,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           if (existingUser) {
               onLogin(existingUser);
           } else {
-              setRegPhone(phoneNumber);
+              // Strip +91 for the registration field
+              const cleanPhone = phoneNumber.replace(/^\+91/, '').replace(/\D/g, '');
+              setRegPhone(cleanPhone);
               switchView('REGISTER');
               setTimeout(() => setError("Phone verified! Please complete your profile."), 600);
           }
@@ -555,13 +558,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                     <form onSubmit={handleSendOtp} className="space-y-5">
                         <div className="space-y-1">
                             <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Phone Number</label>
-                            <input 
-                                type="tel" 
-                                value={phoneForAuth} 
-                                onChange={e => setPhoneForAuth(e.target.value)} 
-                                placeholder="+91 9876543210"
-                                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
-                            />
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                                    <span className="text-slate-500 font-bold text-sm border-r border-slate-300 pr-2">+91</span>
+                                </div>
+                                <input 
+                                    type="tel" 
+                                    value={phoneForAuth} 
+                                    maxLength={10}
+                                    onChange={e => setPhoneForAuth(e.target.value.replace(/\D/g, ''))} 
+                                    placeholder="9876543210"
+                                    className="w-full pl-20 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
+                                />
+                            </div>
                         </div>
 
                         {error && (
@@ -590,7 +599,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                         Change Number
                     </button>
                     <h3 className="text-2xl font-black text-slate-800 mb-2">Verify OTP</h3>
-                    <p className="text-slate-500 font-medium text-sm mb-8">Enter the verification code sent to {phoneForAuth}.</p>
+                    <p className="text-slate-500 font-medium text-sm mb-8">Enter the verification code sent to +91{phoneForAuth}.</p>
                     
                     <form onSubmit={handleVerifyOtp} className="space-y-5">
                         <div className="space-y-1">
@@ -656,7 +665,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                                 </div>
                                 <div className="space-y-1">
                                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Phone</label>
-                                    <input value={regPhone} onChange={e => setRegPhone(e.target.value)} placeholder="9876543210" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" />
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                                            <span className="text-slate-500 font-bold text-sm border-r border-slate-300 pr-2">+91</span>
+                                        </div>
+                                        <input 
+                                            type="tel" 
+                                            value={regPhone} 
+                                            maxLength={10}
+                                            onChange={e => setRegPhone(e.target.value.replace(/\D/g, ''))} 
+                                            placeholder="9876543210" 
+                                            className="w-full pl-20 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" 
+                                        />
+                                    </div>
                                 </div>
                             </div>
                             

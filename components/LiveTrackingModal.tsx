@@ -2,8 +2,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FoodPosting } from '../types';
 import { storage } from '../services/storageService';
+import { loadGoogleMaps } from '../services/mapLoader';
 
-declare const L: any;
+declare const google: any;
 
 interface LiveTrackingModalProps {
   posting: FoodPosting;
@@ -25,12 +26,13 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 const LiveTrackingModal: React.FC<LiveTrackingModalProps> = ({ posting, onClose }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
-  const markersRef = useRef<{[key: string]: any}>({});
+  const markersRef = useRef<any[]>([]);
   const polylineRef = useRef<any>(null);
   const [livePosting, setLivePosting] = useState<FoodPosting>(posting);
   const [trackingStats, setTrackingStats] = useState<{dist: string, time: string} | null>(null);
+  const [error, setError] = useState(false);
 
-  // Poll for updates to get the latest volunteer location
+  // Poll for updates
   useEffect(() => {
     const interval = setInterval(() => {
       const updated = storage.getPostings().find(p => p.id === posting.id);
@@ -39,200 +41,132 @@ const LiveTrackingModal: React.FC<LiveTrackingModalProps> = ({ posting, onClose 
     return () => clearInterval(interval);
   }, [posting.id]);
 
-  // Initialize Map
+  // Initialize Google Map
   useEffect(() => {
-    if (mapContainerRef.current && !mapInstanceRef.current) {
-      const map = L.map(mapContainerRef.current, { zoomControl: false }).setView([20.5937, 78.9629], 13);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO'
-      }).addTo(map);
-      mapInstanceRef.current = map;
-    }
+    let mounted = true;
+    const handleAuthError = () => { if (mounted) setError(true); };
+    window.addEventListener('google-maps-auth-failure', handleAuthError);
+
+    loadGoogleMaps().then(() => {
+        if (!mounted) return;
+        if (mapContainerRef.current && !mapInstanceRef.current) {
+            try {
+                const centerLat = posting.location.lat || 20.5937;
+                const centerLng = posting.location.lng || 78.9629;
+
+                const map = new google.maps.Map(mapContainerRef.current, {
+                    center: { lat: centerLat, lng: centerLng },
+                    zoom: 13,
+                    disableDefaultUI: true,
+                    zoomControl: true,
+                });
+                mapInstanceRef.current = map;
+                updateMap();
+            } catch (e) {
+                console.error("Map init failed", e);
+                setError(true);
+            }
+        }
+    }).catch((e) => {
+        if (mounted) {
+            console.warn("Google Maps load failed", e);
+            setError(true);
+        }
+    });
 
     return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
+        mounted = false;
+        window.removeEventListener('google-maps-auth-failure', handleAuthError);
     };
   }, []);
 
-  // Update Markers and Path based on live data
+  // Update Markers
   useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
+      if (mapInstanceRef.current && !error) {
+          updateMap();
+      }
+  }, [livePosting, error]);
 
-    const { location: pickup, requesterAddress: dropoff, volunteerLocation } = livePosting;
+  const updateMap = () => {
+      const map = mapInstanceRef.current;
+      if (!map) return;
 
-    // Helper to create/update marker with custom HTML icons
-    const updateMarker = (id: string, lat: number, lng: number, iconEmoji: string, color: string, isLive: boolean = false, stats?: {dist: string, time: string}) => {
-        
-        // CSS for pulsing animation injected directly into marker HTML
-        const style = isLive ? `
-          <style>
-            @keyframes ping-marker {
-              75%, 100% { transform: scale(2); opacity: 0; }
-            }
-          </style>
-        ` : '';
+      // Clear existing items
+      markersRef.current.forEach(m => m.setMap(null));
+      markersRef.current = [];
+      if (polylineRef.current) polylineRef.current.setMap(null);
 
-        const pulseHtml = isLive ? `
-            <div style="position: absolute; inset: -12px; background-color: ${color}; border-radius: 50%; opacity: 0.4; animation: ping-marker 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-            <div style="position: absolute; inset: -6px; background-color: ${color}; border-radius: 50%; opacity: 0.2; animation: ping-marker 1.5s cubic-bezier(0, 0, 0.2, 1) infinite; animation-delay: 0.5s;"></div>
-        ` : '';
+      const { location: pickup, requesterAddress: dropoff, volunteerLocation } = livePosting;
 
-        const badgeHtml = isLive ? `
-            <div style="position: absolute; top: -16px; left: 50%; transform: translateX(-50%); background-color: #ef4444; color: white; font-size: 9px; font-weight: 900; padding: 2px 8px; border-radius: 99px; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.15); white-space: nowrap; z-index: 20; display: flex; align-items: center; gap: 4px;">
-                <span style="width: 6px; height: 6px; background-color: white; border-radius: 50%; animation: ping-marker 1s infinite;"></span>
-                LIVE
-            </div>
-        ` : '';
+      const addMarker = (lat: number, lng: number, iconEmoji: string, color: string, title: string, isLive = false) => {
+           const svgIcon = `
+            <svg width="40" height="48" viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M20 48L4 28C-1.33333 21.3333 0 10 4 6C8 2 14 0 20 0C26 0 32 2 36 6C40 10 41.3333 21.3333 36 28L20 48Z" fill="${color}" stroke="white" stroke-width="2"/>
+                <text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" font-size="20">${iconEmoji}</text>
+            </svg>`;
 
-        const markerHtml = `
-            ${style}
-            <div style="position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
-                ${pulseHtml}
-                <div style="position: relative; z-index: 10; background-color: ${color}; width: 36px; height: 36px; border-radius: 50%; border: 3px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1); font-size: 20px;">
-                    ${iconEmoji}
-                </div>
-                ${badgeHtml}
-            </div>
-        `;
+           const marker = new google.maps.Marker({
+               position: { lat, lng },
+               map: map,
+               title: title,
+               icon: {
+                   url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svgIcon),
+                   scaledSize: new google.maps.Size(40, 48),
+                   anchor: new google.maps.Point(20, 48)
+               },
+               zIndex: isLive ? 1000 : 1,
+               animation: isLive ? google.maps.Animation.BOUNCE : null
+           });
+           
+           // Stop bouncing after a few seconds to not be annoying
+           if (isLive) setTimeout(() => marker.setAnimation(null), 3000);
 
-        const icon = L.divIcon({
-            className: 'custom-marker-icon', 
-            html: markerHtml,
-            iconSize: [44, 44],
-            iconAnchor: [22, 22]
-        });
+           markersRef.current.push(marker);
+      };
 
-        // Popup Content Construction
-        let popupContent = '';
-        if (id === 'donor') {
-             popupContent = `
-                <div class="font-sans min-w-[120px] text-center">
-                    <p class="text-[10px] font-black uppercase text-emerald-600 tracking-widest mb-1">Pickup</p>
-                    <p class="font-bold text-sm text-slate-800 line-clamp-1">${livePosting.donorOrg || livePosting.donorName}</p>
-                </div>
-            `;
-        } else if (id === 'requester') {
-             popupContent = `
-                <div class="font-sans min-w-[120px] text-center">
-                    <p class="text-[10px] font-black uppercase text-orange-600 tracking-widest mb-1">Dropoff</p>
-                    <p class="font-bold text-sm text-slate-800 line-clamp-1">${livePosting.orphanageName || 'Requester'}</p>
-                </div>
-            `;
-        } else if (id === 'volunteer') {
-            const statsHtml = stats ? `
-                <div class="flex items-center justify-center gap-2 text-xs border-t border-slate-100 pt-2 mt-2">
-                    <div class="text-center">
-                        <span class="block font-black text-slate-800">${stats.dist} km</span>
-                        <span class="text-[9px] text-slate-400 font-bold uppercase">Dist</span>
-                    </div>
-                    <div class="w-px h-6 bg-slate-100"></div>
-                    <div class="text-center">
-                        <span class="block font-black text-emerald-600">~${stats.time} min</span>
-                        <span class="text-[9px] text-slate-400 font-bold uppercase">ETA</span>
-                    </div>
-                </div>
-            ` : `<p class="text-[9px] text-slate-400 mt-1">Calculating...</p>`;
+      // Pickup Marker
+      if (pickup?.lat && pickup?.lng) {
+          addMarker(pickup.lat, pickup.lng, '🏠', '#10b981', 'Pickup');
+      }
 
-            popupContent = `
-                <div class="font-sans min-w-[140px] text-center p-1">
-                    <p class="text-[10px] font-black uppercase text-blue-600 tracking-widest mb-1">Live Tracking</p>
-                    <p class="font-bold text-sm text-slate-800 mb-1">${livePosting.volunteerName}</p>
-                    <p class="text-[10px] text-slate-500 font-bold uppercase mb-2">Heading to Dropoff</p>
-                    ${statsHtml}
-                </div>
-            `;
-        }
+      // Dropoff Marker
+      if (dropoff?.lat && dropoff?.lng) {
+          addMarker(dropoff.lat, dropoff.lng, '📍', '#f97316', 'Dropoff');
+      }
 
-        if (markersRef.current[id]) {
-            markersRef.current[id].setLatLng([lat, lng]);
-            markersRef.current[id].setIcon(icon); 
-            if (isLive) markersRef.current[id].setZIndexOffset(1000);
-            
-            // Update popup content dynamically if marker exists
-            if (popupContent) {
-                markersRef.current[id].setPopupContent(popupContent);
-                // Keep live marker popup open if it was already open or if we want to force show it
-                if (isLive && !markersRef.current[id].isPopupOpen()) {
-                    markersRef.current[id].openPopup();
-                }
-            }
-        } else {
-            const marker = L.marker([lat, lng], { icon, zIndexOffset: isLive ? 1000 : 0 }).addTo(map);
-            
-            if (popupContent) {
-                marker.bindPopup(popupContent, { closeButton: false, offset: [0, -20] });
-                // Automatically open popup for volunteer to show stats immediately
-                if (isLive) marker.openPopup();
-            }
+      // Volunteer Marker & Polyline
+      if (volunteerLocation?.lat && volunteerLocation?.lng) {
+          addMarker(volunteerLocation.lat, volunteerLocation.lng, '🚴', '#3b82f6', 'Volunteer', true);
+          
+          // Pan map to volunteer
+          map.panTo({ lat: volunteerLocation.lat, lng: volunteerLocation.lng });
 
-            markersRef.current[id] = marker;
-        }
-    };
+          // Calculate stats and draw line if dropoff exists
+          if (dropoff?.lat && dropoff?.lng) {
+               const dist = calculateDistance(volunteerLocation.lat, volunteerLocation.lng, dropoff.lat, dropoff.lng);
+               const timeMin = Math.ceil((dist / 20) * 60); // Approx 20km/h
+               setTrackingStats({ dist: dist.toFixed(1), time: timeMin.toString() });
 
-    // Calculations for Volunteer stats
-    let currentStats = null;
-    if (volunteerLocation?.lat && volunteerLocation?.lng && dropoff?.lat && dropoff?.lng) {
-        const dist = calculateDistance(volunteerLocation.lat, volunteerLocation.lng, dropoff.lat, dropoff.lng);
-        const timeMin = Math.ceil((dist / 20) * 60); // Approx 20km/h avg speed
-        currentStats = {
-            dist: dist.toFixed(1),
-            time: timeMin.toString()
-        };
-        setTrackingStats(currentStats);
-    }
-
-    // Donor Marker (Green)
-    if (pickup?.lat && pickup?.lng) {
-        updateMarker('donor', pickup.lat, pickup.lng, '🏠', '#10b981');
-    }
-
-    // Requester Marker (Orange)
-    if (dropoff?.lat && dropoff?.lng) {
-        updateMarker('requester', dropoff.lat, dropoff.lng, '📍', '#f97316');
-    }
-
-    // Volunteer Marker (Blue) - Live
-    if (volunteerLocation?.lat && volunteerLocation?.lng) {
-        updateMarker('volunteer', volunteerLocation.lat, volunteerLocation.lng, '🚴', '#3b82f6', true, currentStats || undefined);
-        
-        // Update Polyline
-        if (dropoff?.lat && dropoff?.lng) {
-            const latlngs = [
-                [volunteerLocation.lat, volunteerLocation.lng],
-                [dropoff.lat, dropoff.lng]
-            ];
-            
-            if (polylineRef.current) {
-                polylineRef.current.setLatLngs(latlngs);
-            } else {
-                polylineRef.current = L.polyline(latlngs, {
-                    color: '#3b82f6',
-                    weight: 4,
-                    opacity: 0.6,
-                    dashArray: '10, 15', 
-                    lineCap: 'round'
-                }).addTo(map);
-            }
-        }
-
-        // Ensure map follows volunteer smoothly
-        map.panTo([volunteerLocation.lat, volunteerLocation.lng], { 
-            animate: true, 
-            duration: 1.5,
-            easeLinearity: 0.2 
-        });
-    } else {
-        // Fallback center if no volunteer location
-         if (pickup?.lat && pickup?.lng && !markersRef.current['volunteer']) {
-             map.setView([pickup.lat, pickup.lng], 13);
-         }
-    }
-
-  }, [livePosting]);
+               const line = new google.maps.Polyline({
+                   path: [
+                       { lat: volunteerLocation.lat, lng: volunteerLocation.lng },
+                       { lat: dropoff.lat, lng: dropoff.lng }
+                   ],
+                   geodesic: true,
+                   strokeColor: '#3b82f6',
+                   strokeOpacity: 0.7,
+                   strokeWeight: 4,
+                   icons: [{
+                       icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 },
+                       offset: '0',
+                       repeat: '20px'
+                   }],
+                   map: map
+               });
+               polylineRef.current = line;
+          }
+      }
+  };
 
   return (
     <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
@@ -243,7 +177,15 @@ const LiveTrackingModal: React.FC<LiveTrackingModalProps> = ({ posting, onClose 
              </button>
         </div>
         
-        <div ref={mapContainerRef} className="flex-1 w-full h-full bg-slate-100" />
+        {error ? (
+             <div className="flex-1 w-full h-full bg-slate-100 flex flex-col items-center justify-center text-center p-8">
+                  <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mb-4 text-3xl">🗺️</div>
+                  <h3 className="text-slate-700 font-bold mb-2">Map Unavailable</h3>
+                  <p className="text-slate-500 text-sm">Please check your internet or API configuration.</p>
+             </div>
+        ) : (
+             <div ref={mapContainerRef} className="flex-1 w-full h-full bg-slate-100" />
+        )}
         
         <div className="bg-white p-6 border-t border-slate-100 z-[400] shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
             <h3 className="font-black text-lg uppercase mb-3 tracking-wide">Live Delivery Tracking</h3>
