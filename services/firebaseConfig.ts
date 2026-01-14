@@ -10,6 +10,7 @@ import {
     createUserWithEmailAndPassword as firebaseCreateUserWithEmailAndPassword, 
     sendPasswordResetEmail as firebaseSendPasswordResetEmail, 
     confirmPasswordReset as firebaseConfirmPasswordReset,
+    updatePassword as firebaseUpdatePassword,
     onAuthStateChanged as firebaseOnAuthStateChanged, 
     signOut as firebaseSignOut, 
     updateProfile as firebaseUpdateProfile 
@@ -118,6 +119,14 @@ const confirmPasswordReset = async (authArg: any, oobCode: string, newPassword: 
     return;
 };
 
+const updatePassword = async (user: any, newPassword: string) => {
+    if (isConfigured) return firebaseUpdatePassword(user, newPassword);
+
+    await new Promise(r => setTimeout(r, 800));
+    console.log(`[Simulation] Password updated to ${newPassword}`);
+    return;
+};
+
 const signOut = async (authArg: any) => {
     if (isConfigured) return firebaseSignOut(authArg);
     console.log("[Simulation] Signed Out");
@@ -159,6 +168,7 @@ export {
     createUserWithEmailAndPassword, 
     sendPasswordResetEmail, 
     confirmPasswordReset,
+    updatePassword,
     onAuthStateChanged, 
     signOut, 
     updateProfile 
