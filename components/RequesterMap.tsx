@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { User } from '../types';
 import { loadGoogleMaps } from '../services/mapLoader';
 
@@ -14,34 +14,56 @@ const RequesterMap: React.FC<RequesterMapProps> = ({ requesters, currentLocation
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
+    const handleAuthError = () => { if (mounted) setError(true); };
+    window.addEventListener('google-maps-auth-failure', handleAuthError);
+
     loadGoogleMaps().then(() => {
+        if (!mounted) return;
         if (mapContainerRef.current && !mapInstanceRef.current) {
-          const initialLat = currentLocation?.lat || 20.5937;
-          const initialLng = currentLocation?.lng || 78.9629;
-          
-          const map = new google.maps.Map(mapContainerRef.current, {
-            center: { lat: initialLat, lng: initialLng },
-            zoom: 12,
-            disableDefaultUI: true
-          });
-          
-          mapInstanceRef.current = map;
+          try {
+              const initialLat = currentLocation?.lat || 20.5937;
+              const initialLng = currentLocation?.lng || 78.9629;
+              
+              const map = new google.maps.Map(mapContainerRef.current, {
+                center: { lat: initialLat, lng: initialLng },
+                zoom: 12,
+                disableDefaultUI: true
+              });
+              
+              mapInstanceRef.current = map;
+              updateMarkers(map);
+          } catch (e) {
+              console.error("Requester map init error", e);
+              setError(true);
+          }
         }
+    }).catch(e => {
+        if(mounted) setError(true);
     });
+
+    return () => {
+        mounted = false;
+        window.removeEventListener('google-maps-auth-failure', handleAuthError);
+    };
   }, []);
 
   useEffect(() => {
-      if (mapInstanceRef.current && currentLocation) {
+      if (mapInstanceRef.current && currentLocation && !error) {
           mapInstanceRef.current.setCenter({ lat: currentLocation.lat, lng: currentLocation.lng });
       }
-  }, [currentLocation]);
+  }, [currentLocation, error]);
 
   useEffect(() => {
-      if (!mapInstanceRef.current) return;
-      const map = mapInstanceRef.current;
+      if (mapInstanceRef.current && !error) {
+          updateMarkers(mapInstanceRef.current);
+      }
+  }, [requesters, error]);
 
+  const updateMarkers = (map: any) => {
       markersRef.current.forEach(marker => marker.setMap(null));
       markersRef.current = [];
 
@@ -82,7 +104,16 @@ const RequesterMap: React.FC<RequesterMapProps> = ({ requesters, currentLocation
               markersRef.current.push(marker);
           }
       });
-  }, [requesters]);
+  };
+
+  if (error) {
+      return (
+          <div className="h-full w-full rounded-2xl bg-slate-100 border border-slate-200 flex flex-col items-center justify-center p-8 text-center">
+              <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mb-4 text-3xl">🗺️</div>
+              <h3 className="text-slate-700 font-bold mb-2">Map Unavailable</h3>
+          </div>
+      );
+  }
 
   return <div ref={mapContainerRef} className="h-full w-full rounded-2xl shadow-lg border border-slate-200 bg-slate-100" />;
 };

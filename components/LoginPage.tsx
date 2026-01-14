@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, UserRole } from '../types';
 import { storage } from '../services/storageService';
-import { reverseGeocode } from '../services/geminiService';
+import { reverseGeocodeGoogle } from '../services/mapLoader';
 import { 
     auth, 
     googleProvider, 
@@ -96,7 +96,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       const { latitude, longitude } = pos.coords;
       setLatLng({ lat: latitude, lng: longitude });
       try {
-        const addr = await reverseGeocode(latitude, longitude);
+        const addr = await reverseGeocodeGoogle(latitude, longitude);
         if (addr) {
           setLine1(addr.line1);
           setLine2(addr.line2);
@@ -485,6 +485,63 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                     <p className="mt-8 text-center text-xs font-bold text-slate-400">
                         New to MEALers? <button onClick={() => switchView('REGISTER')} className="text-emerald-600 hover:text-emerald-700 underline decoration-2 underline-offset-4 decoration-emerald-200">Create Account</button>
                     </p>
+                </div>
+            )}
+
+            {view === 'FORGOT_PASSWORD' && (
+                <div className="max-w-sm mx-auto mt-4">
+                    <button onClick={() => switchView('LOGIN')} className="mb-6 text-xs font-bold text-slate-400 hover:text-slate-600 flex items-center gap-1">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+                        Back to Login
+                    </button>
+                    <h3 className="text-2xl font-black text-slate-800 mb-2">Reset Password</h3>
+                    <p className="text-slate-500 font-medium text-sm mb-8">Enter your email to receive a password reset link.</p>
+                    
+                    {isResetSent ? (
+                        <div className="text-center animate-fade-in-up">
+                            <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                            </div>
+                            <h4 className="font-bold text-slate-800 mb-2">Check your email</h4>
+                            <p className="text-xs text-slate-500 mb-6">We've sent a reset link to <span className="font-bold">{forgotEmail}</span>.</p>
+                            <button 
+                                onClick={handleForgotSubmit}
+                                disabled={loading}
+                                className="text-emerald-600 font-bold text-xs uppercase tracking-wider hover:underline disabled:opacity-50"
+                            >
+                                {loading ? 'Sending...' : 'Resend Link'}
+                            </button>
+                        </div>
+                    ) : (
+                        <form onSubmit={handleForgotSubmit} className="space-y-5">
+                            <div className="space-y-1">
+                                <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
+                                <input 
+                                    type="email" 
+                                    value={forgotEmail} 
+                                    onChange={e => setForgotEmail(e.target.value)} 
+                                    placeholder="name@example.com"
+                                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
+                                />
+                            </div>
+
+                            {error && (
+                                <div className="animate-fade-in-up p-3 bg-rose-50 rounded-xl flex items-center gap-3 border border-rose-100">
+                                    <svg className="w-5 h-5 text-rose-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    <p className="text-rose-600 text-xs font-bold leading-tight">{error}</p>
+                                </div>
+                            )}
+
+                            <button 
+                                type="submit" 
+                                disabled={loading}
+                                className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-xl shadow-slate-200 hover:bg-slate-800 hover:-translate-y-0.5 hover:shadow-2xl transition-all disabled:opacity-70 disabled:transform-none flex justify-center items-center gap-3"
+                            >
+                                {loading && <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
+                                Send Reset Link
+                            </button>
+                        </form>
+                    )}
                 </div>
             )}
 

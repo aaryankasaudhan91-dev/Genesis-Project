@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Address } from '../types';
 import { loadGoogleMaps } from '../services/mapLoader';
 
@@ -17,28 +17,56 @@ const TrackingMap: React.FC<TrackingMapProps> = ({ pickupLocation, donorName, dr
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const polylineRef = useRef<any>(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
-    loadGoogleMaps().then(() => {
+    let mounted = true;
+    
+    const handleAuthError = () => { if (mounted) setError(true); };
+    window.addEventListener('google-maps-auth-failure', handleAuthError);
+
+    loadGoogleMaps()
+      .then(() => {
+        if (!mounted) return;
         if (mapContainerRef.current && !mapInstanceRef.current) {
-          const lat = pickupLocation.lat || 20.5937;
-          const lng = pickupLocation.lng || 78.9629;
-          
-          const map = new google.maps.Map(mapContainerRef.current, {
-            center: { lat, lng },
-            zoom: 13,
-            disableDefaultUI: true
-          });
-          
-          mapInstanceRef.current = map;
+            try {
+                const lat = pickupLocation.lat || 20.5937;
+                const lng = pickupLocation.lng || 78.9629;
+                
+                const map = new google.maps.Map(mapContainerRef.current, {
+                    center: { lat, lng },
+                    zoom: 13,
+                    disableDefaultUI: true
+                });
+                
+                mapInstanceRef.current = map;
+                updateMapMarkers(map);
+            } catch (e) {
+                console.error("Tracking map init error", e);
+                setError(true);
+            }
+        }
+    })
+    .catch((e) => {
+        if(mounted) {
+            console.warn("Tracking map load failed", e);
+            setError(true);
         }
     });
+
+    return () => {
+        mounted = false;
+        window.removeEventListener('google-maps-auth-failure', handleAuthError);
+    };
   }, []);
 
   useEffect(() => {
-      if (!mapInstanceRef.current) return;
-      const map = mapInstanceRef.current;
+      if (mapInstanceRef.current && !error) {
+          updateMapMarkers(mapInstanceRef.current);
+      }
+  }, [pickupLocation, donorName, dropoffLocation, volunteerLocation, error]);
 
+  const updateMapMarkers = (map: any) => {
       markersRef.current.forEach(m => m.setMap(null));
       markersRef.current = [];
       if (polylineRef.current) polylineRef.current.setMap(null);
@@ -112,8 +140,16 @@ const TrackingMap: React.FC<TrackingMapProps> = ({ pickupLocation, donorName, dr
               });
           }
       }
+  };
 
-  }, [pickupLocation, donorName, dropoffLocation, volunteerLocation]);
+  if (error) {
+      return (
+          <div className="h-full w-full rounded-xl bg-slate-100 border border-slate-200 flex flex-col items-center justify-center p-8 text-center">
+              <div className="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center mb-3 text-2xl">🗺️</div>
+              <p className="text-slate-500 text-xs font-bold">Map Unavailable</p>
+          </div>
+      );
+  }
 
   return <div ref={mapContainerRef} className="h-full w-full rounded-xl" />;
 };

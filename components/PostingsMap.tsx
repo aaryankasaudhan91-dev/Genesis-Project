@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FoodPosting, FoodStatus } from '../types';
 import { loadGoogleMaps } from '../services/mapLoader';
 
@@ -16,39 +16,70 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const linesRef = useRef<any[]>([]);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
-    loadGoogleMaps().then(() => {
-      if (mapContainerRef.current && !mapInstanceRef.current) {
-        const initialLat = userLocation?.lat || 20.5937;
-        const initialLng = userLocation?.lng || 78.9629;
-        
-        const map = new google.maps.Map(mapContainerRef.current, {
-          center: { lat: initialLat, lng: initialLng },
-          zoom: 12,
-          disableDefaultUI: true,
-          styles: [
-             { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] }
-          ]
-        });
-        
-        mapInstanceRef.current = map;
-      }
-    });
+    let mounted = true;
+    
+    // Listen for global auth failure
+    const handleAuthError = () => {
+        if (mounted) setError(true);
+    };
+    window.addEventListener('google-maps-auth-failure', handleAuthError);
+
+    loadGoogleMaps()
+      .then(() => {
+        if (!mounted) return;
+        if (mapContainerRef.current && !mapInstanceRef.current) {
+            try {
+                const initialLat = userLocation?.lat || 20.5937;
+                const initialLng = userLocation?.lng || 78.9629;
+                
+                const map = new google.maps.Map(mapContainerRef.current, {
+                center: { lat: initialLat, lng: initialLng },
+                zoom: 12,
+                disableDefaultUI: true,
+                styles: [
+                    { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] }
+                ]
+                });
+                
+                mapInstanceRef.current = map;
+                updateMapMarkers(map);
+            } catch (e) {
+                console.error("Error initializing map", e);
+                setError(true);
+            }
+        }
+      })
+      .catch((err) => {
+        if (mounted) {
+            console.warn("Map load error:", err);
+            setError(true);
+        }
+      });
+
+    return () => {
+        mounted = false;
+        window.removeEventListener('google-maps-auth-failure', handleAuthError);
+    };
   }, []);
 
   // Update Map Center
   useEffect(() => {
-      if (mapInstanceRef.current && userLocation) {
+      if (mapInstanceRef.current && userLocation && !error) {
           mapInstanceRef.current.setCenter({ lat: userLocation.lat, lng: userLocation.lng });
       }
-  }, [userLocation]);
+  }, [userLocation, error]);
 
   // Update Markers
   useEffect(() => {
-      if (!mapInstanceRef.current) return;
-      const map = mapInstanceRef.current;
+      if (mapInstanceRef.current && !error) {
+          updateMapMarkers(mapInstanceRef.current);
+      }
+  }, [postings, userLocation, error]);
 
+  const updateMapMarkers = (map: any) => {
       // Clear existing
       markersRef.current.forEach(m => m.setMap(null));
       markersRef.current = [];
@@ -165,7 +196,17 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
              }
           }
       });
-  }, [postings, userLocation]);
+  };
+
+  if (error) {
+      return (
+          <div className="h-full w-full rounded-[2rem] bg-slate-100 border border-slate-200 flex flex-col items-center justify-center p-8 text-center">
+              <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mb-4 text-3xl">🗺️</div>
+              <h3 className="text-slate-700 font-bold mb-2">Map Unavailable</h3>
+              <p className="text-slate-500 text-sm max-w-xs">The map could not be loaded. Please check your API key configuration or internet connection.</p>
+          </div>
+      );
+  }
 
   return <div ref={mapContainerRef} className="h-full w-full rounded-[2rem] shadow-inner bg-slate-100 border border-slate-200" />;
 };
