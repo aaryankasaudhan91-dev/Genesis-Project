@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { User, Notification } from '../types';
 
@@ -123,6 +122,12 @@ const Layout: React.FC<LayoutProps> = ({
       <div className="h-32"></div>
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 pb-20">{children}</main>
+
+      <footer className="py-8 text-center border-t border-slate-100/50 mt-8">
+        <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">
+          &copy; {new Date().getFullYear()} MEALers connect. All rights reserved.
+        </p>
+      </footer>
       
       {showLogoutConfirm && (
         <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in-up">

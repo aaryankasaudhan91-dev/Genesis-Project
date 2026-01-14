@@ -1,8 +1,9 @@
 
 import React, { useEffect, useRef } from 'react';
 import { User } from '../types';
+import { loadGoogleMaps } from '../services/mapLoader';
 
-declare const L: any;
+declare const google: any;
 
 interface RequesterMapProps {
   requesters: User[];
@@ -15,57 +16,69 @@ const RequesterMap: React.FC<RequesterMapProps> = ({ requesters, currentLocation
   const markersRef = useRef<any[]>([]);
 
   useEffect(() => {
-    if (mapContainerRef.current && !mapInstanceRef.current) {
-      const initialLat = currentLocation?.lat || 20.5937;
-      const initialLng = currentLocation?.lng || 78.9629;
-      const map = L.map(mapContainerRef.current, { zoomControl: false }).setView([initialLat, initialLng], 12);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png').addTo(map);
-      mapInstanceRef.current = map;
-    }
-    
-    return () => { 
-        if (mapInstanceRef.current) {
-            mapInstanceRef.current.remove(); 
-            mapInstanceRef.current = null; 
+    loadGoogleMaps().then(() => {
+        if (mapContainerRef.current && !mapInstanceRef.current) {
+          const initialLat = currentLocation?.lat || 20.5937;
+          const initialLng = currentLocation?.lng || 78.9629;
+          
+          const map = new google.maps.Map(mapContainerRef.current, {
+            center: { lat: initialLat, lng: initialLng },
+            zoom: 12,
+            disableDefaultUI: true
+          });
+          
+          mapInstanceRef.current = map;
         }
-    };
-  }, []); // Run once on mount
+    });
+  }, []);
 
-  // Update map view if current location changes
   useEffect(() => {
       if (mapInstanceRef.current && currentLocation) {
-          mapInstanceRef.current.setView([currentLocation.lat, currentLocation.lng], 12);
+          mapInstanceRef.current.setCenter({ lat: currentLocation.lat, lng: currentLocation.lng });
       }
   }, [currentLocation]);
 
-  // Update markers
   useEffect(() => {
       if (!mapInstanceRef.current) return;
       const map = mapInstanceRef.current;
 
-      // Clear existing markers
-      markersRef.current.forEach(marker => map.removeLayer(marker));
+      markersRef.current.forEach(marker => marker.setMap(null));
       markersRef.current = [];
 
       requesters.forEach(user => {
           if (user.address?.lat && user.address?.lng) {
-              const popupContent = `
-                <div class="font-sans min-w-[150px]">
-                    <div class="flex items-center gap-2 mb-1">
-                        <span class="text-lg">🏠</span>
-                        <h3 class="font-bold text-slate-800 text-sm">${user.orgName || user.name}</h3>
-                    </div>
-                    <p class="text-xs text-slate-500 mb-1">${user.address.line1}, ${user.address.line2}</p>
-                    <span class="inline-block px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold rounded-full uppercase tracking-wide border border-orange-200">
-                        ${user.orgCategory || 'Requester'}
-                    </span>
-                </div>
-              `;
+              const svgIcon = `
+                <svg width="40" height="48" viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M20 48L4 28C-1.33333 21.3333 0 10 4 6C8 2 14 0 20 0C26 0 32 2 36 6C40 10 41.3333 21.3333 36 28L20 48Z" fill="#f97316" stroke="white" stroke-width="2"/>
+                    <text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" font-size="20">🏠</text>
+                </svg>`;
 
-              const marker = L.marker([user.address.lat, user.address.lng])
-                .addTo(map)
-                .bindPopup(popupContent);
-              
+              const marker = new google.maps.Marker({
+                  position: { lat: user.address.lat, lng: user.address.lng },
+                  map: map,
+                  icon: {
+                      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svgIcon),
+                      scaledSize: new google.maps.Size(40, 48),
+                      anchor: new google.maps.Point(20, 48)
+                  }
+              });
+
+              const infoWindow = new google.maps.InfoWindow({
+                content: `
+                  <div style="font-family: sans-serif; text-align: center;">
+                      <h3 style="margin: 0; font-size: 14px; font-weight: bold; color: #1e293b;">${user.orgName || user.name}</h3>
+                      <p style="margin: 2px 0 4px; font-size: 11px; color: #64748b;">${user.address.line1}</p>
+                      <span style="display: inline-block; padding: 2px 6px; background: #ffedd5; color: #c2410c; border-radius: 99px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+                        ${user.orgCategory || 'Requester'}
+                      </span>
+                  </div>
+                `
+              });
+
+              marker.addListener("click", () => {
+                  infoWindow.open(map, marker);
+              });
+
               markersRef.current.push(marker);
           }
       });

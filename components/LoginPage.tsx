@@ -1,21 +1,37 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import { User, UserRole } from '../types';
 import { storage } from '../services/storageService';
 import { reverseGeocode } from '../services/geminiService';
-import { auth, googleProvider } from '../services/firebaseConfig';
-import { signInWithPopup, sendPasswordResetEmail } from 'firebase/auth';
+import { 
+    auth, 
+    googleProvider, 
+    signInWithPopup, 
+    sendPasswordResetEmail, 
+    RecaptchaVerifier, 
+    signInWithPhoneNumber,
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    updateProfile
+} from '../services/firebaseConfig';
 
 interface LoginPageProps {
   onLogin: (user: User) => void;
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
-  const [view, setView] = useState<'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD'>('LOGIN');
+  const [view, setView] = useState<'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD' | 'PHONE_LOGIN' | 'PHONE_OTP'>('LOGIN');
   const [isAnimating, setIsAnimating] = useState(false);
   
   // --- LOGIN STATE ---
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+
+  // --- PHONE LOGIN STATE ---
+  const [phoneForAuth, setPhoneForAuth] = useState('');
+  const [otp, setOtp] = useState('');
+  const [confirmationResult, setConfirmationResult] = useState<any>(null);
+  const recaptchaVerifierRef = useRef<any>(null);
 
   // --- FORGOT PASSWORD STATE ---
   const [forgotEmail, setForgotEmail] = useState('');
@@ -42,7 +58,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const switchView = (newView: 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD') => {
+  useEffect(() => {
+    // Clean up recaptcha on unmount
+    return () => {
+        if (recaptchaVerifierRef.current) {
+            recaptchaVerifierRef.current.clear();
+        }
+    };
+  }, []);
+
+  const switchView = (newView: 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD' | 'PHONE_LOGIN' | 'PHONE_OTP') => {
     setError('');
     setIsAnimating(true);
     setTimeout(() => {
@@ -50,6 +75,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       if (newView === 'FORGOT_PASSWORD') {
           setForgotEmail('');
           setIsResetSent(false);
+      }
+      if (newView === 'PHONE_LOGIN') {
+          setPhoneForAuth('');
+      }
+      if (newView === 'PHONE_OTP') {
+          setOtp('');
       }
       setIsAnimating(false);
     }, 500);
@@ -82,25 +113,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     });
   };
 
-  const performSimulationLogin = () => {
-      setTimeout(() => {
-         handleSocialLoginSuccess({
-             displayName: "Demo User",
-             email: "demo@mealers.org",
-             photoURL: undefined
-         });
-      }, 1500); 
-  };
-
   const handleGoogleLogin = async () => {
     setError('');
     setLoading(true);
-
-    if (!auth) {
-        console.warn("Auth Not Initialized. Using Simulation.");
-        performSimulationLogin();
-        return;
-    }
 
     try {
         const result = await signInWithPopup(auth, googleProvider);
@@ -111,18 +126,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             photoURL: user.photoURL
         });
     } catch (err: any) {
+        setLoading(false);
         if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
-            setLoading(false);
             return;
         }
-        console.warn("Google Sign-In Error, falling back to demo:", err);
-        performSimulationLogin();
+        console.error("Google Sign-In Error:", err);
+        setError("Google Sign-In failed. Please try again.");
     }
   };
 
   const handleSocialLoginSuccess = (socialUser: { displayName: string | null, email: string | null, photoURL: string | null | undefined }) => {
     const users = storage.getUsers();
-    // Only verify email exists
+    // Verify email exists in local storage to link data
     const existingUser = users.find(u => u.email === socialUser.email);
 
     if (existingUser) {
@@ -137,13 +152,80 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     }
   };
 
+  const handleSendOtp = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!phoneForAuth || phoneForAuth.length < 10) {
+          setError("Please enter a valid phone number with country code (e.g., +91...)");
+          return;
+      }
+      setLoading(true);
+      setError('');
+      
+      try {
+          if (!recaptchaVerifierRef.current) {
+              recaptchaVerifierRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
+                  'size': 'invisible',
+                  'callback': () => {}
+              });
+          }
+          
+          const result = await signInWithPhoneNumber(auth, phoneForAuth, recaptchaVerifierRef.current);
+          setConfirmationResult(result);
+          setLoading(false);
+          switchView('PHONE_OTP');
+      } catch (err: any) {
+          console.error(err);
+          setLoading(false);
+          setError(err.message || "Failed to send OTP. Ensure phone number format is correct.");
+          if (recaptchaVerifierRef.current) {
+              recaptchaVerifierRef.current.clear();
+              recaptchaVerifierRef.current = null;
+          }
+      }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!otp) {
+          setError("Please enter the OTP.");
+          return;
+      }
+      setLoading(true);
+      setError('');
+
+      try {
+          const result = await confirmationResult.confirm(otp);
+          const user = result.user;
+          const phoneNumber = user.phoneNumber || phoneForAuth;
+
+          const users = storage.getUsers();
+          // Find user by phone number
+          const existingUser = users.find(u => {
+             // Simple normalization
+             const uPhone = (u.contactNo || '').replace(/\D/g, '');
+             const inputPhone = phoneNumber.replace(/\D/g, '');
+             return uPhone && inputPhone.includes(uPhone);
+          });
+
+          if (existingUser) {
+              onLogin(existingUser);
+          } else {
+              setRegPhone(phoneNumber);
+              switchView('REGISTER');
+              setTimeout(() => setError("Phone verified! Please complete your profile."), 600);
+          }
+          setLoading(false);
+      } catch (err: any) {
+          console.error(err);
+          setLoading(false);
+          setError("Invalid OTP. Please try again.");
+      }
+  };
+
   const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-
-    // Artificial delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
 
     if (!forgotEmail) {
         setError("Please enter your email.");
@@ -151,28 +233,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         return;
     }
 
-    // Try Firebase first if available
-    if (auth) {
-        try {
-            await sendPasswordResetEmail(auth, forgotEmail);
-            setIsResetSent(true);
-            setLoading(false);
-            return;
-        } catch (e: any) {
-            console.log("Firebase reset failed, checking local storage for simulation...", e);
-        }
-    }
-
-    // Fallback to local storage check for demo purposes
-    const users = storage.getUsers();
-    const user = users.find(u => u.email.toLowerCase() === forgotEmail.toLowerCase());
-    
-    if (user) {
-        // In a real app without firebase, we'd call an API. 
-        // Here we just simulate success for the demo environment.
+    try {
+        await sendPasswordResetEmail(auth, forgotEmail);
         setIsResetSent(true);
-    } else {
-        setError("No account found with that email address.");
+    } catch (e: any) {
+        console.error("Password reset failed:", e);
+        if (e.code === 'auth/user-not-found') {
+            setError("No account found with that email address.");
+        } else {
+            setError("Failed to send reset email. Please try again.");
+        }
     }
     setLoading(false);
   };
@@ -182,32 +252,37 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     setError('');
     setLoading(true);
 
-    // Artificial delay for UX smoothness
-    await new Promise(resolve => setTimeout(resolve, 800));
+    try {
+        const userCredential = await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
+        const firebaseUser = userCredential.user;
+        
+        // Find corresponding user in local storage to get role and details
+        const users = storage.getUsers();
+        // Check by ID first (best), then email
+        const existingUser = users.find(u => u.id === firebaseUser.uid || u.email === firebaseUser.email);
 
-    const users = storage.getUsers();
-    const existingUser = users.find(u => u.email.toLowerCase() === loginEmail.toLowerCase());
+        if (!existingUser) {
+            // User authenticated but no profile data found locally
+            // This happens if a user clears local storage but account exists in Firebase
+            // In a real app with DB, we'd fetch profile here.
+            // For now, prompt to re-register/complete profile
+            setRegEmail(loginEmail);
+            switchView('REGISTER');
+            setTimeout(() => setError("Profile not found locally. Please re-enter details."), 600);
+            setLoading(false);
+            return;
+        }
 
-    if (!existingUser) {
-        setError("Account not found. Please register.");
+        onLogin(existingUser);
+    } catch (err: any) {
         setLoading(false);
-        return;
+        if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+            setError("Invalid email or password.");
+        } else {
+            setError("Login failed. Please try again.");
+            console.error(err);
+        }
     }
-
-    if (existingUser.password && existingUser.password !== loginPassword) {
-        setError("Incorrect password.");
-        setLoading(false);
-        return;
-    }
-    
-    // For users created via social login who didn't set a password
-    if (!existingUser.password) {
-        setError("This account uses Google Sign-In.");
-        setLoading(false);
-        return;
-    }
-
-    onLogin(existingUser);
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -227,45 +302,57 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         return;
     }
 
-    // Artificial delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+        // Create user in Firebase
+        const userCredential = await createUserWithEmailAndPassword(auth, regEmail, regPassword);
+        const firebaseUser = userCredential.user;
 
-    const users = storage.getUsers();
-    if (users.find(u => u.email.toLowerCase() === regEmail.toLowerCase())) {
-        setError("Email already registered. Please login.");
+        // Update Display Name
+        await updateProfile(firebaseUser, {
+            displayName: regName,
+            photoURL: regProfilePic
+        });
+
+        // Save profile to Local Storage (acting as Database)
+        const newUser: User = {
+            id: firebaseUser.uid, // Use Firebase UID
+            name: regName,
+            email: regEmail,
+            // Don't store password locally when using Firebase
+            contactNo: regPhone,
+            role: regRole,
+            orgName: regRole !== UserRole.VOLUNTEER ? regOrgName : undefined,
+            orgCategory: regRole !== UserRole.VOLUNTEER ? regOrgCategory : undefined,
+            address: {
+                line1,
+                line2,
+                pincode,
+                lat: latLng?.lat,
+                lng: latLng?.lng
+            },
+            profilePictureUrl: regProfilePic,
+            impactScore: 0,
+            averageRating: 5.0,
+            ratingsCount: 0
+        };
+
+        storage.saveUser(newUser);
+        onLogin(newUser);
         setLoading(false);
-        return;
+
+    } catch (err: any) {
+        setLoading(false);
+        if (err.code === 'auth/email-already-in-use') {
+            setError("Email already registered. Please login.");
+        } else {
+            setError(err.message || "Registration failed.");
+        }
     }
-
-    const newUser: User = {
-        id: Math.random().toString(36).substr(2, 9),
-        name: regName,
-        email: regEmail,
-        password: regPassword, 
-        contactNo: regPhone,
-        role: regRole,
-        orgName: regRole !== UserRole.VOLUNTEER ? regOrgName : undefined,
-        orgCategory: regRole !== UserRole.VOLUNTEER ? regOrgCategory : undefined,
-        address: {
-            line1,
-            line2,
-            pincode,
-            lat: latLng?.lat,
-            lng: latLng?.lng
-        },
-        profilePictureUrl: regProfilePic,
-        impactScore: 0,
-        averageRating: 5.0,
-        ratingsCount: 0
-    };
-
-    storage.saveUser(newUser);
-    setLoading(false);
-    onLogin(newUser);
   };
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 md:p-6 font-sans">
+      <div id="recaptcha-container"></div>
       <div className="w-full max-w-5xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[700px] animate-fade-in-up transition-all duration-500">
         
         {/* Left Side (Visuals) */}
@@ -285,10 +372,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 
                 <div className={`transition-all duration-500 ${isAnimating ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}`}>
                     <h2 className="text-4xl md:text-5xl font-black leading-tight mb-6 tracking-tight">
-                        {view === 'LOGIN' ? 'Welcome Back.' : view === 'REGISTER' ? 'Join the Mission.' : 'Rest Easy.'}
+                        {view === 'LOGIN' || view === 'PHONE_LOGIN' || view === 'PHONE_OTP' ? 'Welcome Back.' : view === 'REGISTER' ? 'Join the Mission.' : 'Rest Easy.'}
                     </h2>
                     <p className="text-slate-400 font-medium text-lg leading-relaxed max-w-xs">
-                        {view === 'LOGIN' 
+                        {view === 'LOGIN' || view === 'PHONE_LOGIN' || view === 'PHONE_OTP'
                             ? 'Connect to rescue food, feed communities, and create impact.' 
                             : view === 'REGISTER'
                                 ? 'Create an account to become a food donor, volunteer, or beneficiary.'
@@ -314,8 +401,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         </div>
 
         {/* Right Side (Forms) */}
-        <div className="md:w-7/12 p-8 md:p-12 overflow-y-auto custom-scrollbar relative bg-white">
-            <div className={`transition-all duration-500 transform ${isAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
+        <div className="md:w-7/12 p-8 md:p-12 overflow-y-auto custom-scrollbar relative bg-white flex flex-col">
+            <div className={`transition-all duration-500 transform ${isAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'} flex-1`}>
             
             {view === 'LOGIN' && (
                 <div className="max-w-sm mx-auto mt-4">
@@ -384,11 +471,98 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                             </svg>
                             Google
                         </button>
+                        <button 
+                            type="button"
+                            onClick={() => switchView('PHONE_LOGIN')}
+                            disabled={loading}
+                            className="w-full bg-white text-slate-600 font-bold py-4 rounded-2xl border-2 border-slate-100 hover:border-slate-200 hover:bg-slate-50 transition-all flex items-center justify-center gap-3 disabled:opacity-70 group"
+                        >
+                            <svg className="w-5 h-5 text-slate-600 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                            Phone Number
+                        </button>
                     </div>
 
                     <p className="mt-8 text-center text-xs font-bold text-slate-400">
                         New to MEALers? <button onClick={() => switchView('REGISTER')} className="text-emerald-600 hover:text-emerald-700 underline decoration-2 underline-offset-4 decoration-emerald-200">Create Account</button>
                     </p>
+                </div>
+            )}
+
+            {view === 'PHONE_LOGIN' && (
+                <div className="max-w-sm mx-auto mt-4">
+                    <button onClick={() => switchView('LOGIN')} className="mb-6 text-xs font-bold text-slate-400 hover:text-slate-600 flex items-center gap-1">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+                        Back
+                    </button>
+                    <h3 className="text-2xl font-black text-slate-800 mb-8">Phone Login</h3>
+                    <form onSubmit={handleSendOtp} className="space-y-5">
+                        <div className="space-y-1">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Phone Number</label>
+                            <input 
+                                type="tel" 
+                                value={phoneForAuth} 
+                                onChange={e => setPhoneForAuth(e.target.value)} 
+                                placeholder="+91 9876543210"
+                                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
+                            />
+                        </div>
+
+                        {error && (
+                            <div className="animate-fade-in-up p-3 bg-rose-50 rounded-xl flex items-center gap-3 border border-rose-100">
+                                <svg className="w-5 h-5 text-rose-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                <p className="text-rose-600 text-xs font-bold leading-tight">{error}</p>
+                            </div>
+                        )}
+
+                        <button 
+                            type="submit" 
+                            disabled={loading}
+                            className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-xl shadow-slate-200 hover:bg-slate-800 hover:-translate-y-0.5 hover:shadow-2xl transition-all disabled:opacity-70 disabled:transform-none flex justify-center items-center gap-3"
+                        >
+                            {loading && <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
+                            Send OTP
+                        </button>
+                    </form>
+                </div>
+            )}
+
+            {view === 'PHONE_OTP' && (
+                <div className="max-w-sm mx-auto mt-4">
+                    <button onClick={() => switchView('PHONE_LOGIN')} className="mb-6 text-xs font-bold text-slate-400 hover:text-slate-600 flex items-center gap-1">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+                        Change Number
+                    </button>
+                    <h3 className="text-2xl font-black text-slate-800 mb-2">Verify OTP</h3>
+                    <p className="text-slate-500 font-medium text-sm mb-8">Enter the verification code sent to {phoneForAuth}.</p>
+                    
+                    <form onSubmit={handleVerifyOtp} className="space-y-5">
+                        <div className="space-y-1">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">One Time Password</label>
+                            <input 
+                                type="text" 
+                                value={otp} 
+                                onChange={e => setOtp(e.target.value)} 
+                                placeholder="123456"
+                                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100 tracking-widest"
+                            />
+                        </div>
+
+                        {error && (
+                            <div className="animate-fade-in-up p-3 bg-rose-50 rounded-xl flex items-center gap-3 border border-rose-100">
+                                <svg className="w-5 h-5 text-rose-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                <p className="text-rose-600 text-xs font-bold leading-tight">{error}</p>
+                            </div>
+                        )}
+
+                        <button 
+                            type="submit" 
+                            disabled={loading}
+                            className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-xl shadow-slate-200 hover:bg-slate-800 hover:-translate-y-0.5 hover:shadow-2xl transition-all disabled:opacity-70 disabled:transform-none flex justify-center items-center gap-3"
+                        >
+                            {loading && <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
+                            Verify & Login
+                        </button>
+                    </form>
                 </div>
             )}
 
@@ -504,57 +678,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 </div>
             )}
 
-            {view === 'FORGOT_PASSWORD' && (
-                <div className="max-w-sm mx-auto mt-4">
-                    <h3 className="text-2xl font-black text-slate-800 mb-2">Reset Password</h3>
-                    <p className="text-slate-500 font-medium text-sm mb-8">Enter your email and we'll send you instructions to reset your password.</p>
-                    
-                    {!isResetSent ? (
-                        <form onSubmit={handleForgotSubmit} className="space-y-5">
-                            <div className="space-y-1">
-                                <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
-                                <input 
-                                    type="email" 
-                                    value={forgotEmail} 
-                                    onChange={e => setForgotEmail(e.target.value)} 
-                                    placeholder="name@example.com"
-                                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
-                                />
-                            </div>
+            </div>
 
-                            {error && (
-                                <div className="animate-fade-in-up p-3 bg-rose-50 rounded-xl flex items-center gap-3 border border-rose-100">
-                                    <svg className="w-5 h-5 text-rose-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                    <p className="text-rose-600 text-xs font-bold leading-tight">{error}</p>
-                                </div>
-                            )}
-
-                            <button 
-                                type="submit" 
-                                disabled={loading}
-                                className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-xl shadow-slate-200 hover:bg-slate-800 hover:-translate-y-0.5 hover:shadow-2xl transition-all disabled:opacity-70 disabled:transform-none flex justify-center items-center gap-3"
-                            >
-                                {loading && <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
-                                Send Reset Link
-                            </button>
-                        </form>
-                    ) : (
-                        <div className="text-center animate-fade-in-up">
-                            <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner ring-1 ring-emerald-100">
-                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 19v-8.93a2 2 0 01.89-1.664l7-4.666a2 2 0 012.22 0l7 4.666A2 2 0 0121 10.07V19M3 19a2 2 0 002 2h14a2 2 0 002-2M3 19l6.75-4.5M21 19l-6.75-4.5M3 10l6.75 4.5M21 10l-6.75 4.5m0 0l-1.14.76a2 2 0 01-2.22 0l-1.14-.76" /></svg>
-                            </div>
-                            <h4 className="text-lg font-black text-slate-800 mb-2">Check your mail</h4>
-                            <p className="text-slate-500 font-medium text-sm mb-6">We have sent a password recover instructions to your email.</p>
-                        </div>
-                    )}
-                    
-                    <button onClick={() => switchView('LOGIN')} className="mt-8 w-full text-center text-xs font-bold text-slate-400 hover:text-emerald-600 transition-colors uppercase tracking-widest flex items-center justify-center gap-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
-                        Back to Sign In
-                    </button>
-                </div>
-            )}
-
+            <div className="mt-8 text-center">
+                <p className="text-slate-300 text-[10px] font-black uppercase tracking-widest">
+                    &copy; {new Date().getFullYear()} MEALers connect
+                </p>
             </div>
         </div>
       </div>

@@ -1,9 +1,9 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User, UserRole, FoodPosting, FoodStatus, Notification, Rating } from './types';
 import { storage } from './services/storageService';
 import { analyzeFoodSafetyImage, reverseGeocode } from './services/geminiService';
-import { auth } from './services/firebaseConfig';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { auth, onAuthStateChanged, signOut } from './services/firebaseConfig';
 import Layout from './components/Layout';
 import FoodCard from './components/FoodCard';
 import PostingsMap from './components/PostingsMap';
@@ -13,17 +13,7 @@ import HelpFAQ from './components/HelpFAQ';
 import { LoginPage } from './components/LoginPage';
 import VerificationRequestModal from './components/VerificationRequestModal';
 import ChatModal from './components/ChatModal';
-
-const SplashScreen: React.FC = () => (
-  <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-400 via-emerald-600 to-teal-900 z-[1000] flex flex-col items-center justify-center text-white">
-    <div className="relative mb-6">
-        <div className="absolute inset-0 bg-white/30 blur-3xl rounded-full scale-150 animate-pulse"></div>
-        <div className="text-[7rem] relative z-10 animate-bounce-slow drop-shadow-2xl leading-none filter contrast-125">🍃</div>
-    </div>
-    <h1 className="text-5xl md:text-6xl font-black tracking-tighter mb-2 animate-fade-in-up drop-shadow-sm">MEALers</h1>
-    <p className="text-emerald-50 font-bold tracking-[0.3em] text-sm uppercase animate-fade-in-up-delay bg-white/20 px-6 py-2.5 rounded-full backdrop-blur-md border border-white/20 shadow-lg">connect</p>
-  </div>
-);
+import SplashScreen from './components/SplashScreen';
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
