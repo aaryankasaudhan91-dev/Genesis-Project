@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User, UserRole } from '../types';
 import { storage } from '../services/storageService';
 import { reverseGeocodeGoogle } from '../services/mapLoader';
+import LocationPickerMap from './LocationPickerMap';
 import { 
     auth, 
     googleProvider, 
@@ -123,7 +124,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         setDetectingLoc(false);
       }
     }, (err) => {
-      setError("Location access denied. Please enter manually.");
+      setError("Location access denied. Please use the map.");
       setDetectingLoc(false);
     });
   };
@@ -964,10 +965,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                                 <div className="flex justify-between items-center mb-2">
                                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Address</label>
                                     <button type="button" onClick={handleDetectLocation} className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg uppercase tracking-wider hover:bg-emerald-100 transition-colors flex items-center gap-1">
-                                        {detectingLoc ? 'Detecting...' : '📍 Detect'}
+                                        {detectingLoc ? 'Detecting...' : '📍 Detect Current Location'}
                                     </button>
                                 </div>
+                                
                                 <div className="space-y-3">
+                                    <LocationPickerMap 
+                                        lat={latLng?.lat} 
+                                        lng={latLng?.lng} 
+                                        onLocationSelect={(lat, lng) => setLatLng({ lat, lng })}
+                                        onAddressFound={(addr) => {
+                                            setLine1(addr.line1);
+                                            setLine2(addr.line2);
+                                            setPincode(addr.pincode);
+                                        }}
+                                    />
+                                    
                                     <input value={line1} onChange={e => setLine1(e.target.value)} placeholder="Street / Building" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" />
                                     <div className="grid grid-cols-2 gap-4">
                                         <input value={line2} onChange={e => setLine2(e.target.value)} placeholder="Area / City" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" />

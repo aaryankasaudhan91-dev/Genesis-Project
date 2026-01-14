@@ -18,6 +18,7 @@ const LocationPickerMap: React.FC<LocationPickerMapProps> = ({ lat, lng, onLocat
   const markerRef = useRef<any>(null);
   const [error, setError] = useState(false);
 
+  // Initialize Map
   useEffect(() => {
     let mounted = true;
     const handleAuthError = () => { if (mounted) setError(true); };
@@ -32,16 +33,27 @@ const LocationPickerMap: React.FC<LocationPickerMapProps> = ({ lat, lng, onLocat
               
               const map = new google.maps.Map(mapContainerRef.current, {
                 center: { lat: l, lng: g },
-                zoom: 5,
+                zoom: 15, // Closer zoom for precise picking
                 disableDefaultUI: true,
-                zoomControl: true
+                zoomControl: true,
+                streetViewControl: false,
+                mapTypeControl: false,
+                fullscreenControl: false,
+                styles: [
+                  {
+                    featureType: "poi",
+                    elementType: "labels",
+                    stylers: [{ visibility: "off" }]
+                  }
+                ]
               });
 
               const marker = new google.maps.Marker({
                   position: { lat: l, lng: g },
                   map: map,
                   draggable: true,
-                  animation: google.maps.Animation.DROP
+                  animation: google.maps.Animation.DROP,
+                  title: "Drag me to adjust location"
               });
 
               marker.addListener('dragend', async () => {
@@ -75,16 +87,33 @@ const LocationPickerMap: React.FC<LocationPickerMapProps> = ({ lat, lng, onLocat
     };
   }, []);
 
+  // Update marker and map center when props change (e.g. Detect Location clicked)
+  useEffect(() => {
+      if (mapInstanceRef.current && markerRef.current && lat && lng) {
+          const newPos = { lat, lng };
+          markerRef.current.setPosition(newPos);
+          mapInstanceRef.current.panTo(newPos);
+          mapInstanceRef.current.setZoom(17); // Zoom in when location is set
+      }
+  }, [lat, lng]);
+
   if (error) {
       return (
-          <div className="w-full h-56 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col items-center justify-center text-slate-400">
+          <div className="w-full h-64 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col items-center justify-center text-slate-400">
                <svg className="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                <span className="text-xs font-bold uppercase">Map Unavailable</span>
           </div>
       );
   }
 
-  return <div ref={mapContainerRef} className="w-full h-56 rounded-2xl overflow-hidden border border-slate-200" />;
+  return (
+    <div className="relative w-full h-64 rounded-2xl overflow-hidden border border-slate-200 shadow-sm group">
+        <div ref={mapContainerRef} className="w-full h-full" />
+        <div className="absolute bottom-2 left-2 right-2 bg-white/90 backdrop-blur-md px-3 py-2 rounded-xl text-[10px] text-slate-500 font-medium text-center pointer-events-none border border-white/50 shadow-sm">
+            Drag marker to pinpoint precise location
+        </div>
+    </div>
+  );
 };
 
 export default LocationPickerMap;

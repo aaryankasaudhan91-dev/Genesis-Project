@@ -15,6 +15,8 @@ import {
     PhoneAuthProvider as FirebasePhoneAuthProvider,
     signInWithCredential as firebaseSignInWithCredential
 } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.FIREBASE_API_KEY,
@@ -27,6 +29,8 @@ const firebaseConfig = {
 
 let app;
 let auth: any;
+let db: any;
+let storage: any;
 let googleProvider: any;
 let isConfigured = false;
 
@@ -35,16 +39,18 @@ try {
   const apiKey = firebaseConfig.apiKey;
   const isValidKey = apiKey && 
                      apiKey !== "undefined" && 
-                     !apiKey.includes("your_firebase_api_key"); // Check for placeholder
+                     !apiKey.includes("your_firebase_api_key");
 
   if (isValidKey) {
       app = initializeApp(firebaseConfig);
       auth = getAuth(app);
+      db = getFirestore(app);
+      storage = getStorage(app);
       googleProvider = new GoogleAuthProvider();
       isConfigured = true;
       console.log("Firebase initialized successfully.");
   } else {
-      console.warn("Firebase API key is missing or invalid. App will run in Simulation Mode.");
+      console.log("Running in Simulation Mode (Firebase keys missing or invalid).");
   }
 } catch (error) {
   console.warn("Firebase initialization failed. Using simulation mode.", error);
@@ -66,7 +72,6 @@ const mockUser = {
 const signInWithPopup = async (authArg: any, provider: any) => {
     if (isConfigured) return firebaseSignInWithPopup(authArg, provider);
     
-    // Simulate latency
     await new Promise(r => setTimeout(r, 1000));
     console.log("[Simulation] Google Sign In Successful");
     return { user: { ...mockUser } } as any;
@@ -77,7 +82,6 @@ const signInWithEmailAndPassword = async (authArg: any, email: string, pass: str
     
     await new Promise(r => setTimeout(r, 1000));
     console.log(`[Simulation] Login with ${email}`);
-    // Simulate user
     return { user: { ...mockUser, email } } as any;
 };
 
@@ -140,7 +144,7 @@ const updateProfile = async (user: any, profile: any) => {
 
 const onAuthStateChanged = (authArg: any, callback: any) => {
     if (isConfigured) return firebaseOnAuthStateChanged(authArg, callback);
-    // In simulation mode, we don't automatically restore session on reload in this simple implementation
+    // In simulation mode, do not auto-login to mock user on refresh to allow Login Page testing
     // The App's localStorage logic handles the user persistence
     callback(null);
     return () => {};
@@ -165,6 +169,8 @@ const PhoneAuthProvider = isConfigured ? FirebasePhoneAuthProvider : class {
 
 export { 
     auth, 
+    db,
+    storage,
     googleProvider, 
     RecaptchaVerifier, 
     signInWithPhoneNumber, 

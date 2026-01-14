@@ -16,6 +16,7 @@ import { LoginPage } from './components/LoginPage';
 import VerificationRequestModal from './components/VerificationRequestModal';
 import ChatModal from './components/ChatModal';
 import SplashScreen from './components/SplashScreen';
+import LocationPickerMap from './components/LocationPickerMap';
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -52,12 +53,15 @@ export default function App() {
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const [recordingMimeType, setRecordingMimeType] = useState<string>('audio/webm');
 
   // Post Food - Address State
   const [foodLine1, setFoodLine1] = useState('');
   const [foodLine2, setFoodLine2] = useState('');
   const [foodLandmark, setFoodLandmark] = useState('');
   const [foodPincode, setFoodPincode] = useState('');
+  const [foodLat, setFoodLat] = useState<number | undefined>(undefined);
+  const [foodLng, setFoodLng] = useState<number | undefined>(undefined);
   const [isFoodAutoDetecting, setIsFoodAutoDetecting] = useState(false);
   
   // Camera State
@@ -181,11 +185,15 @@ export default function App() {
             setFoodLine2(user.address.line2 || '');
             setFoodLandmark(user.address.landmark || '');
             setFoodPincode(user.address.pincode || '');
+            setFoodLat(user.address.lat);
+            setFoodLng(user.address.lng);
         } else {
             setFoodLine1('');
             setFoodLine2('');
             setFoodLandmark('');
             setFoodPincode('');
+            setFoodLat(userLocation?.lat);
+            setFoodLng(userLocation?.lng);
         }
         setSafetyVerdict(undefined);
         setSelectedTags([]);
@@ -201,7 +209,20 @@ export default function App() {
         if (activeTab === 'active') return filtered.filter(p => p.donorId === user.id && p.status !== FoodStatus.DELIVERED);
         else if (activeTab === 'history') return filtered.filter(p => p.donorId === user.id && p.status === FoodStatus.DELIVERED);
     } else if (user.role === UserRole.VOLUNTEER) {
-        if (activeTab === 'opportunities') return filtered.filter(p => (p.status === FoodStatus.AVAILABLE || (p.status === FoodStatus.REQUESTED && !p.volunteerId)));
+        if (activeTab === 'opportunities') {
+            let opportunities = filtered.filter(p => (p.status === FoodStatus.AVAILABLE || (p.status === FoodStatus.REQUESTED && !p.volunteerId)));
+            
+            if (user.searchRadius && userLocation) {
+                opportunities = opportunities.filter(p => {
+                    if (p.location.lat && p.location.lng) {
+                        const dist = calculateDistance(userLocation.lat, userLocation.lng, p.location.lat, p.location.lng);
+                        return dist <= (user.searchRadius || 10);
+                    }
+                    return true;
+                });
+            }
+            return opportunities;
+        }
         else if (activeTab === 'mytasks') return filtered.filter(p => p.volunteerId === user.id && p.status !== FoodStatus.DELIVERED);
         else if (activeTab === 'history') return filtered.filter(p => p.volunteerId === user.id && p.status === FoodStatus.DELIVERED);
     } else if (user.role === UserRole.REQUESTER) {
@@ -333,21 +354,27 @@ export default function App() {
   const startRecording = async () => {
       try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const mediaRecorder = new MediaRecorder(stream);
+          // Determine a supported mime type (prefer webm, fallback to mp4 for Safari)
+          const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+          setRecordingMimeType(mimeType);
+          
+          const mediaRecorder = new MediaRecorder(stream, { mimeType });
           mediaRecorderRef.current = mediaRecorder;
           audioChunksRef.current = [];
 
           mediaRecorder.ondataavailable = (event) => {
-              audioChunksRef.current.push(event.data);
+              if (event.data.size > 0) {
+                  audioChunksRef.current.push(event.data);
+              }
           };
 
           mediaRecorder.onstop = async () => {
-              const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+              const audioBlob = new Blob(audioChunksRef.current, { type: recordingMimeType });
               const reader = new FileReader();
               reader.readAsDataURL(audioBlob);
               reader.onloadend = async () => {
                   const base64Audio = reader.result as string;
-                  const text = await transcribeAudio(base64Audio);
+                  const text = await transcribeAudio(base64Audio, recordingMimeType);
                   if (text) {
                       setFoodDescription(prev => prev ? `${prev} ${text}` : text);
                   }
@@ -370,7 +397,6 @@ export default function App() {
       }
   };
 
-  // ... (existing helper functions like handleFoodAutoDetectLocation, etc.)
   const handleFoodAutoDetectLocation = () => {
     if (!navigator.geolocation) {
         alert("Geolocation is not supported by your browser.");
@@ -380,6 +406,8 @@ export default function App() {
     navigator.geolocation.getCurrentPosition(
         async (pos) => {
             const { latitude, longitude } = pos.coords;
+            setFoodLat(latitude);
+            setFoodLng(longitude);
             try {
                 const address = await reverseGeocodeGoogle(latitude, longitude);
                 if (address) {
@@ -388,18 +416,17 @@ export default function App() {
                     setFoodLandmark(address.landmark || '');
                     setFoodPincode(address.pincode);
                 } else {
-                    alert("Could not detect detailed address. Please fill manually.");
+                    alert("Could not detect detailed address. Please check map pin.");
                 }
             } catch (e) {
                 console.error(e);
-                alert("Error detecting address.");
             } finally {
                 setIsFoodAutoDetecting(false);
             }
         },
         (err) => {
             console.error(err);
-            alert("Location permission denied. Please enable location or enter manually.");
+            alert("Location permission denied. Please use the map to pick location.");
             setIsFoodAutoDetecting(false);
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
@@ -452,7 +479,14 @@ export default function App() {
       foodName, 
       description: foodDescription,
       quantity: `${quantityNum} ${unit}`,
-      location: { line1: foodLine1, line2: foodLine2, landmark: foodLandmark, pincode: foodPincode, lat: userLocation?.lat, lng: userLocation?.lng },
+      location: { 
+          line1: foodLine1, 
+          line2: foodLine2, 
+          landmark: foodLandmark, 
+          pincode: foodPincode, 
+          lat: foodLat || userLocation?.lat, 
+          lng: foodLng || userLocation?.lng 
+      },
       expiryDate, 
       status: FoodStatus.AVAILABLE, 
       imageUrl: foodImage, 
@@ -467,6 +501,7 @@ export default function App() {
     // Reset Form
     setFoodName(''); setFoodDescription(''); setQuantityNum(''); setFoodImage(null); setSafetyVerdict(undefined);
     setExpiryDate(''); setFoodLine1(''); setFoodLine2(''); setFoodLandmark(''); setFoodPincode(''); setSelectedTags([]);
+    setFoodLat(undefined); setFoodLng(undefined);
   };
 
   const handleDonorApprove = () => {
@@ -513,8 +548,6 @@ export default function App() {
   };
 
   // --- RENDER HELPERS ---
-  // (Assuming renderStatsCard, renderDashboardHeader, renderTabs, renderContent are same as before - reusing from file context if possible, otherwise including simplified)
-  // Re-implementing for completeness based on previous context
   const renderStatsCard = (label: string, value: string | number, icon: string, colorClass: string) => (
     <div className={`p-5 rounded-[2rem] bg-white border border-slate-100 shadow-sm flex items-center gap-4 transition-transform hover:scale-105 flex-1 md:flex-none min-w-[150px] ${colorClass}`}>
         <div className="w-12 h-12 rounded-2xl bg-white/40 flex items-center justify-center text-2xl shadow-sm backdrop-blur-sm shrink-0">
@@ -864,9 +897,26 @@ export default function App() {
                             <div className="flex justify-between items-center mb-2">
                                 <label className="text-xs font-black uppercase text-slate-400 tracking-widest block">Pickup Location</label>
                                 <button type="button" onClick={handleFoodAutoDetectLocation} className="text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 bg-emerald-50 px-3 py-1.5 rounded-lg transition-colors">
-                                    {isFoodAutoDetecting ? 'Detecting...' : 'Use Current Location'}
+                                    {isFoodAutoDetecting ? 'Detecting...' : 'Detect Current Location'}
                                 </button>
                             </div>
+
+                            {/* Location Picker Map */}
+                            <LocationPickerMap 
+                                lat={foodLat} 
+                                lng={foodLng} 
+                                onLocationSelect={(lat, lng) => {
+                                    setFoodLat(lat);
+                                    setFoodLng(lng);
+                                }}
+                                onAddressFound={(addr) => {
+                                    setFoodLine1(addr.line1);
+                                    setFoodLine2(addr.line2);
+                                    setFoodLandmark(addr.landmark || '');
+                                    setFoodPincode(addr.pincode);
+                                }}
+                            />
+
                             <input type="text" placeholder="Line 1" className="w-full px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={foodLine1} onChange={e => setFoodLine1(e.target.value)} required />
                             <input type="text" placeholder="Line 2" className="w-full px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={foodLine2} onChange={e => setFoodLine2(e.target.value)} required />
                             <div className="flex gap-4">

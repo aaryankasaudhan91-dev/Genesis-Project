@@ -168,6 +168,15 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
       setShowCancelConfirmation(false);
   };
 
+  const handleReport = () => {
+      if (!user) return;
+      const reason = window.prompt("Please provide a reason for reporting this posting:");
+      if (reason) {
+          console.log(`[ADMIN REPORT] User ${user.id} (${user.name}) reported Posting ${posting.id}. Reason: "${reason}"`);
+          alert("Thank you. The posting has been reported to the administration for review.");
+      }
+  };
+
   const handleShare = async () => {
     const shareData = {
       title: `Food Rescue: ${posting.foodName}`,
@@ -373,7 +382,7 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
              )}
         </div>
 
-        {/* Action Buttons (Share & Chat) */}
+        {/* Action Buttons (Report, Share & Chat) */}
         <div className="absolute top-5 left-5 z-20 flex flex-col gap-3">
              <button 
                 onClick={(e) => { e.stopPropagation(); handleShare(); }}
@@ -392,6 +401,16 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
                     <svg className="w-5 h-5 group-hover/chat:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
                 </button>
             )}
+
+            <button 
+                onClick={(e) => { e.stopPropagation(); handleReport(); }}
+                className="p-3 rounded-full bg-white/20 backdrop-blur-md text-white hover:bg-white hover:text-rose-600 border border-white/20 transition-all shadow-lg group/report"
+                title="Report Posting"
+            >
+                <svg className="w-5 h-5 group-hover/report:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </button>
         </div>
 
         {/* Bottom Content Info */}

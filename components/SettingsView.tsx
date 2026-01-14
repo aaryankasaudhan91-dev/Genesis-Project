@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, NotificationPreferences, UserRole } from '../types';
 
 interface SettingsViewProps {
@@ -17,8 +17,30 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdate, onDelete, o
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [language, setLanguage] = useState('English');
-  const [theme, setTheme] = useState('Light');
   const [searchRadius, setSearchRadius] = useState<number>(user.searchRadius || 10);
+  
+  // Theme State with persistence
+  const [theme, setTheme] = useState(() => {
+      return localStorage.getItem('app_theme') || 'Light';
+  });
+
+  // Apply Theme Effect
+  useEffect(() => {
+      const root = document.documentElement;
+      const applyTheme = (selectedTheme: string) => {
+          const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          const shouldBeDark = selectedTheme === 'Dark' || (selectedTheme === 'System' && isSystemDark);
+          
+          if (shouldBeDark) {
+              root.classList.add('dark');
+          } else {
+              root.classList.remove('dark');
+          }
+      };
+
+      applyTheme(theme);
+      localStorage.setItem('app_theme', theme);
+  }, [theme]);
 
   const togglePref = (key: keyof NotificationPreferences) => {
       const newPrefs = { ...prefs, [key]: !prefs[key] };
@@ -83,7 +105,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdate, onDelete, o
                     </select>
                 </div>
 
-                {user.role === UserRole.REQUESTER && (
+                {(user.role === UserRole.REQUESTER || user.role === UserRole.VOLUNTEER) && (
                     <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
                         <div className="flex items-center gap-3">
                             <div className="p-2 bg-white rounded-xl shadow-sm text-slate-600">
