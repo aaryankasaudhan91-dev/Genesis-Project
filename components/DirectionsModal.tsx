@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { getOptimizedRoute, RouteOptimizationResult } from '../services/geminiService';
+import { getOptimizedRoute, RouteOptimizationResult, askWithMaps } from '../services/geminiService';
 
 interface DirectionsModalProps {
   origin: string;
@@ -13,6 +13,8 @@ const DirectionsModal: React.FC<DirectionsModalProps> = ({ origin, destination, 
   const [route, setRoute] = useState<RouteOptimizationResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [nearbyInfo, setNearbyInfo] = useState<{text: string, sources: any[]} | null>(null);
+  const [loadingNearby, setLoadingNearby] = useState(false);
 
   useEffect(() => {
     const fetchRoute = async () => {
@@ -31,6 +33,14 @@ const DirectionsModal: React.FC<DirectionsModalProps> = ({ origin, destination, 
     };
     fetchRoute();
   }, [origin, destination, waypoint]);
+
+  const fetchNearby = async () => {
+      setLoadingNearby(true);
+      const destName = destination.split(',')[0];
+      const result = await askWithMaps(`What are prominent landmarks or places near ${destName}?`);
+      setNearbyInfo(result);
+      setLoadingNearby(false);
+  };
 
   const mapsUrl = waypoint 
     ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&waypoints=${encodeURIComponent(waypoint)}`
@@ -95,6 +105,31 @@ const DirectionsModal: React.FC<DirectionsModalProps> = ({ origin, destination, 
                     <p className="text-xs font-medium text-slate-700 ml-4 truncate">{waypoint}</p>
                  </div>
               )}
+
+              {/* Nearby Info (Maps Grounding) */}
+              <div className="bg-emerald-50 rounded-2xl border border-emerald-100 p-4">
+                  <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-[10px] font-black uppercase text-emerald-800 tracking-widest">What's Nearby?</h4>
+                      {!nearbyInfo && !loadingNearby && (
+                          <button onClick={fetchNearby} className="text-[10px] font-bold text-emerald-600 bg-white px-2 py-1 rounded shadow-sm hover:shadow-md transition-all">
+                              Load Info
+                          </button>
+                      )}
+                  </div>
+                  {loadingNearby && <p className="text-xs text-emerald-600 animate-pulse font-medium">Checking maps...</p>}
+                  {nearbyInfo && (
+                      <div className="space-y-2">
+                          <p className="text-xs text-slate-600 leading-relaxed">{nearbyInfo.text}</p>
+                          {nearbyInfo.sources.map((s, i) => (
+                              s.maps?.uri && (
+                                  <a key={i} href={s.maps.uri} target="_blank" rel="noreferrer" className="block text-[10px] font-bold text-emerald-700 underline truncate">
+                                      {s.maps.title}
+                                  </a>
+                              )
+                          ))}
+                      </div>
+                  )}
+              </div>
 
               {/* Traffic Tips */}
               {route.trafficTips && (

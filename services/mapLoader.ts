@@ -2,7 +2,7 @@
 let loaderPromise: Promise<void> | null = null;
 
 export const loadGoogleMaps = (): Promise<void> => {
-  if (typeof window !== 'undefined' && (window as any).google && (window as any).google.maps) {
+  if (typeof window !== 'undefined' && (window as any).google && (window as any).google.maps && (window as any).markerClusterer) {
     return Promise.resolve();
   }
   
@@ -30,7 +30,21 @@ export const loadGoogleMaps = (): Promise<void> => {
       script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,geometry`;
       script.async = true;
       script.defer = true;
-      script.onload = () => resolve();
+      
+      script.onload = () => {
+        // Load MarkerClusterer Library after Maps API
+        const clusterScript = document.createElement('script');
+        clusterScript.src = "https://unpkg.com/@googlemaps/markerclusterer/dist/index.min.js";
+        clusterScript.async = true;
+        clusterScript.defer = true;
+        clusterScript.onload = () => resolve();
+        clusterScript.onerror = (e) => {
+            console.warn("MarkerClusterer failed to load, map will work without clustering", e);
+            resolve(); // Resolve anyway so map still loads
+        };
+        document.head.appendChild(clusterScript);
+      };
+      
       script.onerror = (e) => reject(new Error("Google Maps script failed to load"));
       document.head.appendChild(script);
     });

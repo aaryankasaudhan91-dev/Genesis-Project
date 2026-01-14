@@ -45,6 +45,7 @@ export interface User {
   ratingsCount?: number;
   profilePictureUrl?: string;
   notificationPreferences?: NotificationPreferences;
+  searchRadius?: number;
 }
 
 export interface ChatMessage {

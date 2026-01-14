@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Modality } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -35,11 +35,11 @@ const cleanJson = (text: string) => {
     return text.replace(/```json\n?|```/g, '').trim();
 };
 
-// --- 1. Intelligent Food Safety Tips ---
+// --- 1. Intelligent Food Safety Tips (Updated to Fast Model) ---
 export const getFoodSafetyTips = async (foodName: string): Promise<string> => {
   try {
     const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.5-flash-lite', // FAST AI RESPONSE
         contents: `You are a professional Food Safety Officer. 
         Provide 3 specific, high-priority safety & storage tips for donating "${foodName}".
         Format as a concise bullet list. Total length under 60 words.
@@ -69,7 +69,6 @@ export const analyzeFoodSafetyImage = async (base64Data: string): Promise<ImageA
   `;
 
   try {
-      // gemini-2.5-flash-image does not support responseSchema/MimeType, so we parse text manually.
       const response = await ai.models.generateContent({
           model: 'gemini-2.5-flash-image',
           contents: {
@@ -98,6 +97,126 @@ export const analyzeFoodSafetyImage = async (base64Data: string): Promise<ImageA
           confidence: 0.5
       };
   }
+};
+
+// --- NEW: Image Editing (Nano Banana) ---
+export const editImage = async (base64Image: string, prompt: string): Promise<string | null> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: {
+        parts: [
+          { inlineData: { mimeType: 'image/jpeg', data: getBase64(base64Image) } },
+          { text: prompt }
+        ],
+      },
+    });
+    
+    // Find the image part in the response
+    if (response.candidates?.[0]?.content?.parts) {
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                return `data:image/png;base64,${part.inlineData.data}`;
+            }
+        }
+    }
+    return null;
+  } catch (e) {
+    console.error("Image Edit Error", e);
+    return null;
+  }
+};
+
+// --- NEW: Audio Transcription (STT) ---
+export const transcribeAudio = async (base64Audio: string, mimeType: string = 'audio/wav'): Promise<string> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: mimeType, data: getBase64(base64Audio) } },
+                    { text: "Transcribe this audio accurately. Return only the transcript text." }
+                ]
+            }
+        });
+        return response.text || "";
+    } catch (e) {
+        console.error("Transcription Error", e);
+        return "";
+    }
+};
+
+// --- NEW: Text to Speech (TTS) ---
+export const generateSpeech = async (text: string): Promise<string | null> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-preview-tts',
+            contents: { parts: [{ text }] },
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: {
+                    voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
+                }
+            }
+        });
+        const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        return audioData || null;
+    } catch (e) {
+        console.error("TTS Error", e);
+        return null;
+    }
+};
+
+// --- NEW: Search Grounding ---
+export const askWithSearch = async (query: string): Promise<{text: string, sources: any[]}> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: query,
+            config: {
+                tools: [{ googleSearch: {} }]
+            }
+        });
+        const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        return { text: response.text || "No information found.", sources: groundingChunks };
+    } catch (e) {
+        console.error("Search Error", e);
+        return { text: "Search unavailable at the moment.", sources: [] };
+    }
+};
+
+// --- NEW: Maps Grounding ---
+export const askWithMaps = async (query: string, location?: {lat: number, lng: number}): Promise<{text: string, sources: any[]}> => {
+    try {
+        // STRICT CONFIGURATION for Maps Grounding
+        const config: any = {
+            tools: [{ googleMaps: {} }]
+        };
+        
+        if (location) {
+            config.toolConfig = {
+                retrievalConfig: {
+                    latLng: {
+                        latitude: location.lat,
+                        longitude: location.lng
+                    }
+                }
+            };
+        }
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: query,
+            config: config
+        });
+        
+        const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        // Ensure text exists even if not grounded, though grounding usually returns both
+        return { text: response.text || "I couldn't find specific location details.", sources: groundingChunks };
+    } catch (e) {
+        console.error("Maps Grounding Error", e);
+        return { text: "Location services unavailable.", sources: [] };
+    }
 };
 
 // --- 3. Personalized Pickup Verification ---

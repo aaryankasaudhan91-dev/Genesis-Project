@@ -1,9 +1,11 @@
+
 import React, { useState, useRef } from 'react';
 import { FoodPosting, User, UserRole, FoodStatus } from '../types';
 import DirectionsModal from './DirectionsModal';
 import LiveTrackingModal from './LiveTrackingModal';
 import RatingModal from './RatingModal';
 import VerificationRequestModal from './VerificationRequestModal';
+import { generateSpeech, askWithMaps } from '../services/geminiService';
 
 interface FoodCardProps {
   posting: FoodPosting;
@@ -54,6 +56,11 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
   const [isConfirmingStart, setIsConfirmingStart] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  
+  // Maps Grounding State
+  const [locationInsight, setLocationInsight] = useState<{text: string, sources: any[]} | null>(null);
+  const [isLoadingInsight, setIsLoadingInsight] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pickupInputRef = useRef<HTMLInputElement>(null);
@@ -70,11 +77,9 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
       return { color: 'text-emerald-600', label: 'Fresh' };
   };
   
-  const expiryStatus = getExpiryStatus();
   const hasRated = posting.ratings?.some(r => r.raterId === user?.id);
   const isSafetyUnknownOrUnsafe = posting.safetyVerdict && !posting.safetyVerdict.isSafe;
 
-  // Determine if the user is involved in this posting to allow chat
   const isInvolved = user && (
     user.id === posting.donorId || 
     user.id === posting.volunteerId || 
@@ -128,7 +133,6 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
   };
   
   const handleApprove = () => {
-      // Check current status to decide next state
       if (posting.status === FoodStatus.PICKUP_VERIFICATION_PENDING) {
          onUpdate(posting.id, { status: FoodStatus.IN_TRANSIT });
       } else if (posting.status === FoodStatus.DELIVERY_VERIFICATION_PENDING) {
@@ -218,8 +222,6 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
     setIsVerifying(true);
     try {
         const base64 = await resizeImage(file);
-        
-        // If Requester uploads, they are confirming receipt directly.
         if (user.role === UserRole.REQUESTER) {
             onUpdate(posting.id, { 
                 status: FoodStatus.DELIVERED, 
@@ -227,7 +229,6 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
             });
             alert("Delivery confirmed! Thank you.");
         } else {
-            // Volunteer upload -> Pending Requester Verification
             onUpdate(posting.id, { 
                 status: FoodStatus.DELIVERY_VERIFICATION_PENDING, 
                 verificationImageUrl: base64 
@@ -241,6 +242,67 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
         setIsVerifying(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  const handleTTS = async () => {
+      if (isPlaying) return;
+      setIsPlaying(true);
+      const text = `Food Donation: ${posting.foodName}. Quantity: ${posting.quantity}. Description: ${posting.description || 'No description'}. Expires in ${hoursLeft > 0 ? Math.floor(hoursLeft) + ' hours' : 'expired'}.`;
+      
+      const audioData = await generateSpeech(text);
+      if (audioData) {
+          const binaryString = atob(audioData);
+          const len = binaryString.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+          }
+          try {
+             // Create WAV header for 24kHz mono PCM 16-bit
+             const wavHeader = new Uint8Array(44 + bytes.length);
+             const view = new DataView(wavHeader.buffer);
+             // RIFF chunk
+             view.setUint32(0, 0x52494646, false); // "RIFF"
+             view.setUint32(4, 36 + bytes.length, true);
+             view.setUint32(8, 0x57415645, false); // "WAVE"
+             // fmt subchunk
+             view.setUint32(12, 0x666d7420, false); // "fmt "
+             view.setUint32(16, 16, true); // Subchunk1Size
+             view.setUint16(20, 1, true); // AudioFormat (1=PCM)
+             view.setUint16(22, 1, true); // NumChannels (1)
+             view.setUint32(24, 24000, true); // SampleRate
+             view.setUint32(28, 24000 * 2, true); // ByteRate
+             view.setUint16(32, 2, true); // BlockAlign
+             view.setUint16(34, 16, true); // BitsPerSample
+             // data subchunk
+             view.setUint32(36, 0x64617461, false); // "data"
+             view.setUint32(40, bytes.length, true);
+             wavHeader.set(bytes, 44);
+
+             const blob = new Blob([wavHeader], { type: 'audio/wav' });
+             const url = URL.createObjectURL(blob);
+             const audio = new Audio(url);
+             audio.onended = () => setIsPlaying(false);
+             audio.play();
+          } catch(e) {
+             console.error("Audio playback error", e);
+             setIsPlaying(false);
+          }
+      } else {
+          setIsPlaying(false);
+      }
+  };
+
+  const handleLocationInsight = async () => {
+      if (locationInsight) {
+          setLocationInsight(null);
+          return;
+      }
+      setIsLoadingInsight(true);
+      const query = `Provide a brief, helpful summary of the location "${posting.location.line1}, ${posting.location.line2}". Is it residential, commercial, or public? Any notable landmarks nearby?`;
+      const result = await askWithMaps(query, posting.location.lat && posting.location.lng ? { lat: posting.location.lat, lng: posting.location.lng } : undefined);
+      setLocationInsight(result);
+      setIsLoadingInsight(false);
   };
 
   const getOriginString = () => {
@@ -382,9 +444,19 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
       {/* Main Body */}
       <div className={`p-6 flex-1 flex flex-col ${isSafetyUnknownOrUnsafe ? 'opacity-50 pointer-events-none' : ''}`}>
           
-          {posting.description && (
-            <p className="text-sm text-slate-500 font-medium leading-relaxed mb-6 line-clamp-2">{posting.description}</p>
-          )}
+          <div className="flex items-start gap-2 mb-6">
+              {posting.description && (
+                <p className="text-sm text-slate-500 font-medium leading-relaxed line-clamp-2 flex-1">{posting.description}</p>
+              )}
+              <button 
+                onClick={handleTTS} 
+                disabled={isPlaying}
+                className={`p-2 rounded-full transition-colors ${isPlaying ? 'bg-emerald-100 text-emerald-600 animate-pulse' : 'bg-slate-100 text-slate-400 hover:text-slate-600'}`}
+                title="Read Aloud"
+              >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+              </button>
+          </div>
 
           {posting.foodTags && (
                 <div className="flex flex-wrap gap-2 mb-6">
@@ -396,17 +468,50 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
           
           <div className="mt-auto space-y-4">
               
-              {/* Location Row */}
-              <div className="flex items-start gap-3 group/loc cursor-pointer" onClick={() => window.open(mapsUrl, '_blank')}>
-                 <div className="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center shrink-0 text-slate-400 group-hover/loc:bg-emerald-50 group-hover/loc:text-emerald-600 transition-colors border border-slate-100">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                 </div>
-                 <div className="flex-1 min-w-0 py-0.5">
-                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Pickup Location</p>
-                     <p className="text-sm font-bold text-slate-700 leading-snug line-clamp-1 group-hover/loc:text-emerald-700 transition-colors">
-                        {posting.location.line1}
-                     </p>
-                 </div>
+              {/* Location Row with Maps Grounding Insight */}
+              <div>
+                  <div className="flex items-start gap-3 group/loc cursor-pointer" onClick={() => window.open(mapsUrl, '_blank')}>
+                     <div className="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center shrink-0 text-slate-400 group-hover/loc:bg-emerald-50 group-hover/loc:text-emerald-600 transition-colors border border-slate-100">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                     </div>
+                     <div className="flex-1 min-w-0 py-0.5">
+                         <div className="flex justify-between items-center">
+                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Pickup Location</p>
+                             <button onClick={(e) => { e.stopPropagation(); handleLocationInsight(); }} className="text-[9px] font-bold text-emerald-600 hover:text-emerald-800 uppercase tracking-wider bg-emerald-50 px-2 py-0.5 rounded transition-colors">
+                                 {locationInsight ? 'Hide Info' : 'Analyze Location'}
+                             </button>
+                         </div>
+                         <p className="text-sm font-bold text-slate-700 leading-snug line-clamp-1 group-hover/loc:text-emerald-700 transition-colors">
+                            {posting.location.line1}
+                         </p>
+                     </div>
+                  </div>
+                  
+                  {/* Maps Grounding Result Display */}
+                  {isLoadingInsight && (
+                      <div className="mt-2 ml-14 p-2">
+                          <p className="text-xs text-slate-400 font-bold animate-pulse flex items-center gap-2">
+                              <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                              Asking Gemini Maps...
+                          </p>
+                      </div>
+                  )}
+                  {locationInsight && (
+                      <div className="mt-3 ml-14 bg-emerald-50/50 rounded-xl p-3 border border-emerald-100/50 animate-fade-in-up">
+                          <p className="text-xs text-slate-600 font-medium leading-relaxed">{locationInsight.text}</p>
+                          {locationInsight.sources && locationInsight.sources.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                  {locationInsight.sources.map((s, i) => (
+                                      s.maps?.uri && (
+                                          <a key={i} href={s.maps.uri} target="_blank" rel="noreferrer" className="text-[9px] font-bold text-emerald-700 bg-white px-2 py-1 rounded border border-emerald-100 hover:shadow-sm transition-all truncate max-w-full">
+                                              📍 {s.maps.title}
+                                          </a>
+                                      )
+                                  ))}
+                              </div>
+                          )}
+                      </div>
+                  )}
               </div>
 
               {/* Volunteer Row */}

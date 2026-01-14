@@ -4,6 +4,7 @@ import { FoodPosting, FoodStatus } from '../types';
 import { loadGoogleMaps } from '../services/mapLoader';
 
 declare const google: any;
+declare const markerClusterer: any;
 
 interface PostingsMapProps {
   postings: FoodPosting[];
@@ -14,8 +15,12 @@ interface PostingsMapProps {
 const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, userLocation }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
+  const clustererRef = useRef<any>(null);
+  
+  // Non-clustered markers (User location, volunteer paths)
+  const staticMarkersRef = useRef<any[]>([]); 
   const linesRef = useRef<any[]>([]);
+  
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -36,15 +41,45 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
                 const initialLng = userLocation?.lng || 78.9629;
                 
                 const map = new google.maps.Map(mapContainerRef.current, {
-                center: { lat: initialLat, lng: initialLng },
-                zoom: 12,
-                disableDefaultUI: true,
-                styles: [
-                    { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] }
-                ]
+                    center: { lat: initialLat, lng: initialLng },
+                    zoom: 12,
+                    disableDefaultUI: true,
+                    styles: [
+                        { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] }
+                    ]
                 });
                 
                 mapInstanceRef.current = map;
+
+                // Initialize Clusterer if library exists
+                if (typeof markerClusterer !== 'undefined' && markerClusterer.MarkerClusterer) {
+                    clustererRef.current = new markerClusterer.MarkerClusterer({ 
+                        map,
+                        renderer: {
+                            render: ({ count, position }: any) => {
+                                return new google.maps.Marker({
+                                    position,
+                                    label: { 
+                                        text: String(count), 
+                                        color: "white", 
+                                        fontSize: "12px", 
+                                        fontWeight: "bold" 
+                                    },
+                                    icon: {
+                                        path: google.maps.SymbolPath.CIRCLE,
+                                        scale: 18 + Math.min(count, 10), // Scale size slightly with count
+                                        fillColor: '#10b981', // Emerald-500
+                                        fillOpacity: 0.9,
+                                        strokeWeight: 4,
+                                        strokeColor: '#d1fae5' // Emerald-100
+                                    },
+                                    zIndex: 1000 + count,
+                                });
+                            }
+                        }
+                    });
+                }
+
                 updateMapMarkers(map);
             } catch (e) {
                 console.error("Error initializing map", e);
@@ -80,13 +115,20 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
   }, [postings, userLocation, error]);
 
   const updateMapMarkers = (map: any) => {
-      // Clear existing
-      markersRef.current.forEach(m => m.setMap(null));
-      markersRef.current = [];
+      // 1. Clear Static Markers (User, Volunteers)
+      staticMarkersRef.current.forEach(m => m.setMap(null));
+      staticMarkersRef.current = [];
       linesRef.current.forEach(l => l.setMap(null));
       linesRef.current = [];
 
-      // Add User Location
+      // 2. Clear Clusterer (Food Postings)
+      if (clustererRef.current) {
+          clustererRef.current.clearMarkers();
+      }
+
+      const foodMarkers: any[] = [];
+
+      // --- A. Add User Location (Static, not clustered) ---
       if (userLocation) {
           const userSvg = `
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -101,13 +143,15 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
                   scaledSize: new google.maps.Size(24, 24),
                   anchor: new google.maps.Point(12, 12)
               },
-              title: "You are here"
+              title: "You are here",
+              zIndex: 50 // Low z-index so it doesn't cover active postings
           });
-          markersRef.current.push(userMarker);
+          staticMarkersRef.current.push(userMarker);
       }
 
+      // --- B. Process Postings ---
       postings.forEach(post => {
-          // --- Food Posting Marker ---
+          // Food Marker (To be Clustered)
           if (post.location?.lat && post.location?.lng) {
               const isUrgent = new Date(post.expiryDate).getTime() - Date.now() < 12 * 60 * 60 * 1000;
               const color = isUrgent ? '#f43f5e' : '#10b981';
@@ -121,12 +165,13 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
 
               const marker = new google.maps.Marker({
                   position: { lat: post.location.lat, lng: post.location.lng },
-                  map: map,
+                  // map: map, // DO NOT SET MAP HERE if using clusterer
                   icon: {
                       url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svgIcon),
                       scaledSize: new google.maps.Size(40, 48),
                       anchor: new google.maps.Point(20, 48)
-                  }
+                  },
+                  title: post.foodName
               });
 
               marker.addListener("click", () => {
@@ -143,10 +188,10 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
                   infoWindow.open(map, marker);
               });
 
-              markersRef.current.push(marker);
+              foodMarkers.push(marker);
           }
 
-          // --- Volunteer Live Marker ---
+          // Volunteer Live Marker (Static, not clustered, important to see individually)
           if (post.volunteerLocation?.lat && post.volunteerLocation?.lng && 
              (post.status === FoodStatus.IN_TRANSIT || post.status === FoodStatus.PICKUP_VERIFICATION_PENDING || post.status === FoodStatus.DELIVERY_VERIFICATION_PENDING)) {
               
@@ -161,8 +206,8 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
 
              const vMarker = new google.maps.Marker({
                  position: { lat: vLat, lng: vLng },
-                 map: map,
-                 zIndex: 1000,
+                 map: map, // Explicitly set map for non-clustered items
+                 zIndex: 2000,
                  icon: {
                      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(volSvg),
                      scaledSize: new google.maps.Size(36, 36),
@@ -170,7 +215,7 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
                  },
                  title: `Volunteer: ${post.volunteerName}`
              });
-             markersRef.current.push(vMarker);
+             staticMarkersRef.current.push(vMarker);
 
              // Path Line
              let target = post.location;
@@ -196,6 +241,15 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
              }
           }
       });
+
+      // 3. Add food markers to clusterer
+      if (clustererRef.current) {
+          clustererRef.current.addMarkers(foodMarkers);
+      } else {
+          // Fallback if clusterer didn't load: add directly to map
+          foodMarkers.forEach(m => m.setMap(map));
+          staticMarkersRef.current.push(...foodMarkers); // Track them to clear later if needed
+      }
   };
 
   if (error) {

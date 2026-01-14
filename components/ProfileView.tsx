@@ -1,27 +1,20 @@
 
 import React, { useState, useRef } from 'react';
-import { User, NotificationPreferences, UserRole } from '../types';
+import { User, UserRole } from '../types';
 import { generateAvatar } from '../services/geminiService';
 
 interface ProfileViewProps {
   user: User;
   onUpdate: (updates: Partial<User>) => void;
   onBack: () => void;
-  onDelete: () => void;
 }
 
-const ProfileView: React.FC<ProfileViewProps> = ({ user, onUpdate, onBack, onDelete }) => {
+const ProfileView: React.FC<ProfileViewProps> = ({ user, onUpdate, onBack }) => {
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [contactNo, setContactNo] = useState(user?.contactNo || '');
   const [profilePictureUrl, setProfilePictureUrl] = useState(user?.profilePictureUrl);
-  const [prefs, setPrefs] = useState<NotificationPreferences>(user.notificationPreferences || {
-      newPostings: true,
-      missionUpdates: true,
-      messages: true
-  });
   const [isGenerating, setIsGenerating] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -30,7 +23,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, onUpdate, onBack, onDel
       alert("Please enter a valid 10-digit Contact Number.");
       return;
     }
-    onUpdate({ name, email, contactNo, profilePictureUrl, notificationPreferences: prefs });
+    onUpdate({ name, email, contactNo, profilePictureUrl });
     alert("Profile updated!");
   };
 
@@ -54,10 +47,6 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, onUpdate, onBack, onDel
       alert("Failed to generate avatar. Please try again.");
     }
     setIsGenerating(false);
-  };
-
-  const togglePref = (key: keyof NotificationPreferences) => {
-      setPrefs(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   return (
@@ -199,110 +188,14 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, onUpdate, onBack, onDel
                  </div>
               </div>
 
-              {/* Notification Preferences */}
-              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                  <h3 className="font-black text-slate-800 text-xs uppercase tracking-wide mb-4">Notification Preferences</h3>
-                  <div className="space-y-4">
-                      {user.role === UserRole.VOLUNTEER && (
-                          <div className="flex items-center justify-between">
-                              <div>
-                                  <p className="font-bold text-sm text-slate-700">New Food Postings</p>
-                                  <p className="text-xs text-slate-500">Get alerted when food is donated nearby.</p>
-                              </div>
-                              <button 
-                                  type="button" 
-                                  onClick={() => togglePref('newPostings')}
-                                  className={`w-11 h-6 rounded-full transition-colors flex items-center px-0.5 ${prefs.newPostings ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                              >
-                                  <div className={`w-5 h-5 bg-white rounded-full shadow-sm transform transition-transform ${prefs.newPostings ? 'translate-x-5' : 'translate-x-0'}`}></div>
-                              </button>
-                          </div>
-                      )}
-                      
-                      <div className="flex items-center justify-between">
-                          <div>
-                              <p className="font-bold text-sm text-slate-700">Mission Updates</p>
-                              <p className="text-xs text-slate-500">Status changes, verifications, and approvals.</p>
-                          </div>
-                          <button 
-                              type="button" 
-                              onClick={() => togglePref('missionUpdates')}
-                              className={`w-11 h-6 rounded-full transition-colors flex items-center px-0.5 ${prefs.missionUpdates ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                          >
-                              <div className={`w-5 h-5 bg-white rounded-full shadow-sm transform transition-transform ${prefs.missionUpdates ? 'translate-x-5' : 'translate-x-0'}`}></div>
-                          </button>
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                          <div>
-                              <p className="font-bold text-sm text-slate-700">Messages</p>
-                              <p className="text-xs text-slate-500">Receive notifications for chat messages.</p>
-                          </div>
-                          <button 
-                              type="button" 
-                              onClick={() => togglePref('messages')}
-                              className={`w-11 h-6 rounded-full transition-colors flex items-center px-0.5 ${prefs.messages ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                          >
-                              <div className={`w-5 h-5 bg-white rounded-full shadow-sm transform transition-transform ${prefs.messages ? 'translate-x-5' : 'translate-x-0'}`}></div>
-                          </button>
-                      </div>
-                  </div>
-              </div>
-              
               <div className="pt-4">
                   <button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-lg shadow-slate-200 transform active:scale-95 transition-all">
                     Save Changes
                   </button>
               </div>
             </form>
-
-            <div className="mt-12 pt-8 border-t border-slate-200">
-                <h3 className="text-sm font-black text-rose-600 uppercase tracking-wide mb-4">Danger Zone</h3>
-                <div className="bg-rose-50 border border-rose-100 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-4">
-                    <div>
-                        <p className="text-slate-800 font-bold text-sm">Delete Account</p>
-                        <p className="text-slate-500 text-xs mt-1">Once you delete your account, there is no going back. Please be certain.</p>
-                    </div>
-                    <button 
-                        type="button" 
-                        onClick={() => setShowDeleteConfirm(true)} 
-                        className="px-5 py-3 bg-white border border-rose-200 text-rose-600 font-black rounded-xl text-xs uppercase tracking-wider hover:bg-rose-600 hover:text-white transition-all shadow-sm"
-                    >
-                        Delete Account
-                    </button>
-                </div>
-            </div>
         </div>
       </div>
-
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in-up">
-            <div className="bg-white rounded-[2.5rem] p-10 w-full max-w-sm text-center shadow-2xl scale-100 transition-transform">
-                <div className="w-20 h-20 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border border-rose-100">
-                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                </div>
-                <h3 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Are you sure?</h3>
-                <p className="text-slate-500 font-medium mb-8 leading-relaxed">This action cannot be undone. All your data will be permanently removed.</p>
-                <div className="flex gap-4">
-                    <button 
-                        onClick={() => setShowDeleteConfirm(false)} 
-                        className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black rounded-2xl transition-colors uppercase text-xs tracking-widest"
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        onClick={() => {
-                            setShowDeleteConfirm(false);
-                            onDelete();
-                        }} 
-                        className="flex-1 py-4 bg-rose-500 hover:bg-rose-600 text-white font-black rounded-2xl transition-colors shadow-lg shadow-rose-200 uppercase text-xs tracking-widest hover:-translate-y-0.5 active:translate-y-0"
-                    >
-                        Yes, Delete
-                    </button>
-                </div>
-            </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -1,6 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { User } from '../types';
+import { askWithSearch, askWithMaps } from '../services/geminiService';
 import { GoogleGenAI } from "@google/genai";
 
 interface SupportChatModalProps {
@@ -13,6 +14,7 @@ interface Message {
   sender: 'user' | 'ai';
   text: string;
   timestamp: number;
+  sources?: any[];
 }
 
 const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) => {
@@ -20,12 +22,13 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
     {
       id: 'welcome',
       sender: 'ai',
-      text: `Hello ${user.name.split(' ')[0]}! 👋 I'm your Gemini Support Assistant. How can I help you rescue food today?`,
+      text: `Hello ${user.name.split(' ')[0]}! 👋 I'm RescueBot. Ask me about food safety, regulations, or find nearby food banks.`,
       timestamp: Date.now()
     }
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [mode, setMode] = useState<'support' | 'search' | 'maps'>('support');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,54 +45,45 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
     setIsTyping(true);
 
     try {
-      const apiKey = process.env.API_KEY;
-      if (!apiKey) throw new Error("API Key missing");
+      let aiText = "";
+      let sources: any[] = [];
 
-      const ai = new GoogleGenAI({ apiKey });
+      if (mode === 'search') {
+          const result = await askWithSearch(userMsg.text);
+          aiText = result.text;
+          sources = result.sources;
+      } else if (mode === 'maps') {
+          const location = user.address?.lat && user.address?.lng ? { lat: user.address.lat, lng: user.address.lng } : undefined;
+          const result = await askWithMaps(userMsg.text, location);
+          aiText = result.text;
+          sources = result.sources;
+      } else {
+          // Default Support Mode
+          const apiKey = process.env.API_KEY;
+          if (!apiKey) throw new Error("API Key missing");
+          const ai = new GoogleGenAI({ apiKey });
+          const systemPrompt = `
+            You are "RescueBot", the AI support agent for 'MEALers connect'.
+            Current User Context: Name: ${user.name}, Role: ${user.role}.
+            Guidelines: Be friendly, concise, and solution-oriented.
+          `;
+          const history = messages.filter(m => !m.sources).slice(-6).map(m => ({
+              role: m.sender === 'user' ? 'user' : 'model',
+              parts: [{ text: m.text }]
+          }));
+          const chat = ai.chats.create({
+              model: 'gemini-3-flash-preview',
+              history: history,
+              config: { systemInstruction: systemPrompt, maxOutputTokens: 300, temperature: 0.7 }
+          });
+          const result = await chat.sendMessage({ message: userMsg.text });
+          aiText = result.text || "I didn't catch that.";
+      }
 
-      const systemPrompt = `
-        You are "RescueBot", the AI support agent for 'MEALers connect'.
-        
-        Current User Context:
-        - Name: ${user.name}
-        - Role: ${user.role}
-        
-        Platform Knowledge:
-        1. Donors post food. Volunteers deliver it. Requesters (Orphanages) receive it.
-        2. Safety is priority. We use AI to check food, but manual verification is mandatory.
-        3. App flows: Post Food -> Volunteer Accepts -> Pickup Verification -> Delivery -> Dropoff Verification.
-        
-        Guidelines:
-        - Be friendly, concise, and solution-oriented.
-        - If the user has a technical issue, suggest checking their internet or restarting the app.
-        - For urgent safety issues, tell them to call the helpline: +91 85910 95318.
-        - Answer as if you are a helpful team member.
-      `;
-
-      // Construct history for Gemini from local messages state
-      // We take the last 10 messages to keep context window manageable
-      const history = messages.slice(-10).map(m => ({
-          role: m.sender === 'user' ? 'user' : 'model',
-          parts: [{ text: m.text }]
-      }));
-
-      const chat = ai.chats.create({
-          model: 'gemini-3-flash-preview',
-          history: history,
-          config: {
-              systemInstruction: systemPrompt,
-              maxOutputTokens: 300,
-              temperature: 0.7
-          }
-      });
-
-      const result = await chat.sendMessage({ message: userMsg.text });
-      const aiText = result.text || "I'm thinking... could you rephrase that?";
-
-      setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: aiText, timestamp: Date.now() }]);
+      setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: aiText, timestamp: Date.now(), sources }]);
     } catch (err) {
         console.error(err);
-        setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: "I'm currently offline. Please try again later or contact support manually.", timestamp: Date.now() }]);
+        setMessages(prev => [...prev, { id: Date.now().toString(), sender: 'ai', text: "Service temporarily unavailable.", timestamp: Date.now() }]);
     } finally {
         setIsTyping(false);
     }
@@ -98,25 +92,60 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
   return (
     <div className="fixed inset-0 z-[1000] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in-up">
       <div className="bg-white rounded-[2rem] w-full max-w-md h-[600px] flex flex-col shadow-2xl overflow-hidden border border-slate-200">
-        <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-4 flex justify-between items-center shrink-0">
-            <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-xl backdrop-blur-md border border-white/10">🤖</div>
-                <div>
-                    <h3 className="font-black text-white text-sm uppercase tracking-wide">Gemini Support</h3>
-                    <p className="text-slate-400 text-xs font-medium">Powered by Google AI</p>
+        <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-4 shrink-0">
+            <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-xl backdrop-blur-md border border-white/10">🤖</div>
+                    <div>
+                        <h3 className="font-black text-white text-sm uppercase tracking-wide">RescueBot</h3>
+                        <p className="text-slate-400 text-xs font-medium">
+                            {mode === 'search' ? 'Web Search Mode' : mode === 'maps' ? 'Maps Mode' : 'Support Mode'}
+                        </p>
+                    </div>
                 </div>
+                <button onClick={onClose} className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
             </div>
-            <button onClick={onClose} className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
+            
+            {/* Mode Toggles */}
+            <div className="flex gap-2">
+                <button onClick={() => setMode('support')} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${mode === 'support' ? 'bg-white text-slate-900' : 'bg-white/10 text-slate-400 hover:bg-white/20'}`}>Support</button>
+                <button onClick={() => setMode('search')} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${mode === 'search' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'bg-white/10 text-slate-400 hover:bg-white/20'}`}>Web Search</button>
+                <button onClick={() => setMode('maps')} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${mode === 'maps' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-white/10 text-slate-400 hover:bg-white/20'}`}>Maps</button>
+            </div>
         </div>
         
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 custom-scrollbar">
             {messages.map((m) => (
-                <div key={m.id} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${m.sender === 'user' ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none'}`}>
+                <div key={m.id} className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}>
+                    <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${m.sender === 'user' ? 'bg-slate-800 text-white rounded-tr-none' : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none'}`}>
                         {m.text}
                     </div>
+                    {/* Sources Display */}
+                    {m.sources && m.sources.length > 0 && (
+                        <div className="mt-2 max-w-[85%] space-y-2">
+                            {m.sources.map((chunk: any, idx: number) => {
+                                if (chunk.web?.uri) {
+                                    return (
+                                        <a key={idx} href={chunk.web.uri} target="_blank" rel="noreferrer" className="block bg-blue-50 border border-blue-100 p-2 rounded-lg text-xs hover:bg-blue-100 transition-colors">
+                                            <p className="font-bold text-blue-800 truncate">{chunk.web.title}</p>
+                                            <p className="text-blue-500 truncate">{chunk.web.uri}</p>
+                                        </a>
+                                    );
+                                }
+                                if (chunk.maps?.uri) {
+                                     return (
+                                        <a key={idx} href={chunk.maps.uri} target="_blank" rel="noreferrer" className="block bg-emerald-50 border border-emerald-100 p-2 rounded-lg text-xs hover:bg-emerald-100 transition-colors">
+                                            <p className="font-bold text-emerald-800 truncate">{chunk.maps.title}</p>
+                                            <p className="text-emerald-500 truncate">View on Maps</p>
+                                        </a>
+                                    );
+                                }
+                                return null;
+                            })}
+                        </div>
+                    )}
                 </div>
             ))}
             {isTyping && (
@@ -136,10 +165,10 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
                 type="text" 
                 value={inputText} 
                 onChange={e => setInputText(e.target.value)} 
-                placeholder="Type your question..." 
-                className="flex-1 bg-slate-50 border border-slate-200 text-slate-800 px-4 py-3 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all" 
+                placeholder={mode === 'search' ? "Ask Google..." : mode === 'maps' ? "Find places..." : "Type your question..."}
+                className="flex-1 bg-slate-50 border border-slate-200 text-slate-800 px-4 py-3 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-slate-500 transition-all" 
             />
-            <button type="submit" disabled={!inputText.trim() || isTyping} className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white p-3 rounded-xl transition-all shadow-lg shadow-emerald-200">
+            <button type="submit" disabled={!inputText.trim() || isTyping} className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white p-3 rounded-xl transition-all shadow-lg shadow-slate-200">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
             </button>
         </form>
