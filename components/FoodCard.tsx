@@ -349,7 +349,7 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
   };
 
   return (
-    <div className={`group rounded-[2.5rem] bg-white transition-all duration-500 relative overflow-hidden flex flex-col h-full ${isUrgent ? 'ring-2 ring-rose-100 shadow-[0_20px_50px_-12px_rgba(244,63,94,0.2)]' : 'shadow-[0_20px_40px_-12px_rgba(0,0,0,0.05)] hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.1)]'} hover:-translate-y-1`}>
+    <div className={`group rounded-[2.5rem] bg-white transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] relative overflow-hidden flex flex-col h-full transform will-change-transform hover:scale-[1.02] hover:-translate-y-1 ${isUrgent ? 'ring-2 ring-rose-100 shadow-[0_20px_50px_-12px_rgba(244,63,94,0.2)] hover:shadow-[0_25px_60px_-12px_rgba(244,63,94,0.35)]' : `border border-slate-100 shadow-[0_20px_40px_-12px_rgba(0,0,0,0.05)] hover:shadow-[0_35px_60px_-15px_rgba(0,0,0,0.12)] ${isClothes ? 'hover:border-indigo-100' : 'hover:border-emerald-100'}`}`}>
       
       {/* Image Header */}
       <div className="h-64 relative overflow-hidden shrink-0">

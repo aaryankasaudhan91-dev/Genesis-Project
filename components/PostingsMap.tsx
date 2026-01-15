@@ -108,13 +108,14 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
                         justify-content: center; 
                         border: 3px solid white;
                         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+                        transition: transform 0.2s;
                     ">
                         <div style="transform: rotate(45deg); font-size: 20px;">${emoji}</div>
                     </div>
                   `;
 
                   const foodIcon = L.divIcon({
-                      className: 'custom-food-marker',
+                      className: 'custom-food-marker group',
                       html: iconHtml,
                       iconSize: [40, 48],
                       iconAnchor: [20, 48],
@@ -124,23 +125,54 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
                   const marker = L.marker([post.location.lat, post.location.lng], { icon: foodIcon })
                       .addTo(group);
 
-                  // Custom Popup Content
-                  const popupContent = document.createElement('div');
-                  popupContent.innerHTML = `
-                    <div style="font-family: 'Plus Jakarta Sans', sans-serif; min-width: 200px;">
-                        ${post.imageUrl ? `<div style="height: 120px; width: 100%; margin-bottom: 8px; border-radius: 8px; overflow: hidden;"><img src="${post.imageUrl}" style="width: 100%; height: 100%; object-fit: cover;" /></div>` : ''}
-                        <h3 style="font-weight: 800; font-size: 14px; margin: 0; color: #0f172a;">${post.foodName}</h3>
-                        <p style="font-size: 11px; color: #64748b; margin: 4px 0 8px;">${post.quantity} • ${post.donorOrg || post.donorName}</p>
-                        <button id="view-btn-${post.id}" style="width: 100%; background: ${isClothes ? '#4f46e5' : '#059669'}; color: white; border: none; padding: 8px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; text-transform: uppercase;">View Details</button>
+                  // Create Rich Popup Content
+                  const popupDiv = document.createElement('div');
+                  popupDiv.style.fontFamily = '"Plus Jakarta Sans", sans-serif';
+                  popupDiv.style.minWidth = '220px';
+                  popupDiv.style.cursor = 'pointer';
+                  
+                  popupDiv.innerHTML = `
+                    <div style="display: flex; gap: 12px; align-items: start;">
+                        ${post.imageUrl ? `
+                            <img src="${post.imageUrl}" style="width: 50px; height: 50px; border-radius: 10px; object-fit: cover; flex-shrink: 0; border: 1px solid #e2e8f0;" />
+                        ` : `
+                            <div style="width: 50px; height: 50px; border-radius: 10px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-size: 20px;">${emoji}</div>
+                        `}
+                        <div style="flex: 1; min-width: 0;">
+                            <h3 style="font-weight: 800; font-size: 14px; margin: 0 0 2px 0; color: #0f172a; line-height: 1.2;">${post.foodName}</h3>
+                            <p style="font-size: 11px; color: #64748b; margin: 0 0 6px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${post.quantity} • ${post.donorOrg || post.donorName}</p>
+                            <span style="
+                                display: inline-block; 
+                                padding: 2px 8px; 
+                                border-radius: 4px; 
+                                font-size: 9px; 
+                                font-weight: 800; 
+                                text-transform: uppercase; 
+                                background: ${isClothes ? '#e0e7ff' : '#d1fae5'}; 
+                                color: ${isClothes ? '#4338ca' : '#047857'};
+                            ">
+                                ${isClothes ? 'Clothes' : 'Food'}
+                            </span>
+                        </div>
+                    </div>
+                    <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #f1f5f9; text-align: center;">
+                        <span style="font-size: 11px; font-weight: 700; color: #3b82f6;">Tap to View Details &rarr;</span>
                     </div>
                   `;
-                  
-                  // Handle click inside popup
-                  popupContent.querySelector(`#view-btn-${post.id}`)?.addEventListener('click', () => {
-                      if (onPostingSelect) onPostingSelect(post.id);
+
+                  // Make the entire popup clickable
+                  popupDiv.addEventListener('click', () => {
+                      if (onPostingSelect) {
+                          onPostingSelect(post.id);
+                          map.closePopup();
+                      }
                   });
 
-                  marker.bindPopup(popupContent);
+                  marker.bindPopup(popupDiv, {
+                      closeButton: false, // Cleaner look
+                      offset: L.point(0, -10)
+                  });
+                  
                   bounds.extend([post.location.lat, post.location.lng]);
               }
           });
@@ -189,10 +221,36 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
               )}
           </button>
+
+          {/* Legend Overlay */}
+          <div className="absolute bottom-4 left-4 z-[400] bg-white/95 backdrop-blur-md p-3 rounded-2xl shadow-xl border border-slate-100 max-w-[160px] animate-fade-in-up">
+              <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3 border-b border-slate-100 pb-1">Map Legend</h4>
+              <div className="space-y-2.5">
+                  <div className="flex items-center gap-2.5">
+                      <div className="w-3 h-3 bg-blue-500 rounded-full border border-white shadow-sm relative shrink-0">
+                          <div className="absolute -inset-1 bg-blue-500/30 rounded-full animate-ping"></div>
+                      </div>
+                      <span className="text-[11px] font-bold text-slate-700">Your Location</span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                      <div className="w-3 h-3 bg-emerald-500 rounded-full border border-white shadow-sm shrink-0"></div>
+                      <span className="text-[11px] font-bold text-slate-700">Food Donation</span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                      <div className="w-3 h-3 bg-indigo-500 rounded-full border border-white shadow-sm shrink-0"></div>
+                      <span className="text-[11px] font-bold text-slate-700">Clothes Donation</span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                      <div className="w-3 h-3 bg-rose-500 rounded-full border border-white shadow-sm shrink-0"></div>
+                      <span className="text-[11px] font-bold text-slate-700">Urgent</span>
+                  </div>
+              </div>
+          </div>
           
           <style>{`
-            .leaflet-popup-content-wrapper { border-radius: 12px; padding: 0; overflow: hidden; }
-            .leaflet-popup-content { margin: 12px; }
+            .leaflet-popup-content-wrapper { border-radius: 16px; padding: 0; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); border: 1px solid #e2e8f0; }
+            .leaflet-popup-content { margin: 16px; }
+            .leaflet-popup-tip { background: white; border: 1px solid #e2e8f0; }
             @keyframes ping {
                 75%, 100% { transform: scale(2); opacity: 0; }
             }

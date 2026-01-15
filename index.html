@@ -7,12 +7,22 @@
     <script>
         // Minimal polyfill for process.env to prevent evaluation errors in the browser
         window.process = window.process || { env: {} };
+        
+        // Initial Theme Check to prevent flash
+        const savedTheme = localStorage.getItem('app_theme');
+        const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (savedTheme === 'Dark' || (savedTheme === 'System' && isSystemDark)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
+        darkMode: 'class',
         theme: {
           extend: {
             fontFamily: {
@@ -53,7 +63,7 @@
 }
 </script>
 </head>
-<body class="bg-slate-50 text-slate-900 font-sans selection:bg-emerald-100 selection:text-emerald-900">
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 font-sans selection:bg-emerald-100 selection:text-emerald-900 transition-colors duration-300">
     <div id="root"></div>
     <script type="module" src="./index.tsx"></script>
 </body>
