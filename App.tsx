@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User, UserRole, FoodPosting, FoodStatus, Notification, Rating } from './types';
 import { storage, calculateDistance } from './services/storageService';
@@ -18,6 +17,7 @@ import VerificationRequestModal from './components/VerificationRequestModal';
 import ChatModal from './components/ChatModal';
 import SplashScreen from './components/SplashScreen';
 import LocationPickerMap from './components/LocationPickerMap';
+import PaymentModal from './components/PaymentModal';
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -44,7 +44,7 @@ export default function App() {
   const [foodImage, setFoodImage] = useState<string | null>(null);
   const [safetyVerdict, setSafetyVerdict] = useState<{isSafe: boolean, reasoning: string} | undefined>(undefined);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   
   // Image Editing State
   const [isEditingImage, setIsEditingImage] = useState(false);
@@ -201,7 +201,7 @@ export default function App() {
         setSelectedTags([]);
         setImageEditPrompt('');
         setIsEditingImage(false);
-        setIsProcessingPayment(false);
+        setShowPaymentModal(false);
     }
   }, [isAddingFood, user]);
 
@@ -468,57 +468,56 @@ export default function App() {
       }
   };
 
-  const handlePostFood = async (e: React.FormEvent) => {
+  const handleInitiatePayment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     if (!foodImage) { alert("Please take a photo of the food."); return; }
     if (!foodLine1 || !foodLine2 || !foodPincode) { alert("Please enter a valid pickup address."); return; }
-
-    setIsProcessingPayment(true);
     
-    // Simulate Payment
-    try {
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        const newPost: FoodPosting = {
-            id: Math.random().toString(36).substr(2, 9), 
-            donorId: user.id, 
-            donorName: user?.name || 'Unknown Donor', 
-            donorOrg: user.orgName,
-            foodName, 
-            description: foodDescription,
-            quantity: `${quantityNum} ${unit}`,
-            location: { 
-                line1: foodLine1, 
-                line2: foodLine2, 
-                landmark: foodLandmark, 
-                pincode: foodPincode, 
-                lat: foodLat || userLocation?.lat, 
-                lng: foodLng || userLocation?.lng 
-            },
-            expiryDate, 
-            status: FoodStatus.AVAILABLE, 
-            imageUrl: foodImage, 
-            safetyVerdict,
-            foodTags: selectedTags,
-            createdAt: Date.now(),
-            platformFeePaid: true
-        };
-        storage.savePosting(newPost);
-        setPostings(storage.getPostings());
-        
-        // Reset Form
-        setFoodName(''); setFoodDescription(''); setQuantityNum(''); setFoodImage(null); setSafetyVerdict(undefined);
-        setExpiryDate(''); setFoodLine1(''); setFoodLine2(''); setFoodLandmark(''); setFoodPincode(''); setSelectedTags([]);
-        setFoodLat(undefined); setFoodLng(undefined);
-        
-        setIsAddingFood(false);
-        alert("Payment of ₹5 successful! Food donation posted.");
-    } catch (e) {
-        alert("Payment failed. Please try again.");
-    } finally {
-        setIsProcessingPayment(false);
-    }
+    // Show Payment Modal instead of direct processing
+    setShowPaymentModal(true);
+  };
+
+  const handlePaymentSuccess = () => {
+    if (!user) return;
+    
+    const newPost: FoodPosting = {
+        id: Math.random().toString(36).substr(2, 9), 
+        donorId: user.id, 
+        donorName: user?.name || 'Unknown Donor', 
+        donorOrg: user.orgName,
+        foodName, 
+        description: foodDescription,
+        quantity: `${quantityNum} ${unit}`,
+        location: { 
+            line1: foodLine1, 
+            line2: foodLine2, 
+            landmark: foodLandmark, 
+            pincode: foodPincode, 
+            lat: foodLat || userLocation?.lat, 
+            lng: foodLng || userLocation?.lng 
+        },
+        expiryDate, 
+        status: FoodStatus.AVAILABLE, 
+        imageUrl: foodImage, 
+        safetyVerdict,
+        foodTags: selectedTags,
+        createdAt: Date.now(),
+        platformFeePaid: true
+    };
+    
+    storage.savePosting(newPost);
+    setPostings(storage.getPostings());
+    
+    // Reset Form
+    setFoodName(''); setFoodDescription(''); setQuantityNum(''); setFoodImage(null); setSafetyVerdict(undefined);
+    setExpiryDate(''); setFoodLine1(''); setFoodLine2(''); setFoodLandmark(''); setFoodPincode(''); setSelectedTags([]);
+    setFoodLat(undefined); setFoodLng(undefined);
+    
+    setShowPaymentModal(false);
+    setIsAddingFood(false);
+    // Success alert handled visually by the modal, but a final toast is good practice
+    // For now, the modal's internal success state provides feedback.
   };
 
   const handleDonorApprove = () => {
@@ -761,7 +760,7 @@ export default function App() {
                         </button>
                     </div>
                     
-                    <form onSubmit={handlePostFood} className="p-8 space-y-8 max-h-[80vh] overflow-y-auto custom-scrollbar">
+                    <form onSubmit={handleInitiatePayment} className="p-8 space-y-8 max-h-[80vh] overflow-y-auto custom-scrollbar">
                         {/* Image Capture Section */}
                         <div className="space-y-4">
                             <label className="text-xs font-black uppercase text-slate-400 tracking-widest block">Food Photo & Safety Check</label>
@@ -967,7 +966,7 @@ export default function App() {
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                     </svg>
-                                    Processing ₹5 Payment...
+                                    Processing...
                                 </>
                             ) : (
                                 'Pay ₹5 & Post Donation'
@@ -1022,6 +1021,15 @@ export default function App() {
                 posting={postings.find(p => p.id === activeChatPostingId)!}
                 user={user!}
                 onClose={() => setActiveChatPostingId(null)}
+            />
+        )}
+
+        {/* Payment Modal */}
+        {showPaymentModal && (
+            <PaymentModal 
+                amount={5} 
+                onSuccess={handlePaymentSuccess} 
+                onCancel={() => setShowPaymentModal(false)} 
             />
         )}
     </Layout>
