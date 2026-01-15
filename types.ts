@@ -1,4 +1,5 @@
 
+
 export enum UserRole {
   DONOR = 'DONOR',
   VOLUNTEER = 'VOLUNTEER',
@@ -98,6 +99,7 @@ export interface FoodPosting {
   volunteerNotes?: string;
   ratings?: Rating[];
   createdAt: number;
+  platformFeePaid?: boolean;
 }
 
 export interface Notification {

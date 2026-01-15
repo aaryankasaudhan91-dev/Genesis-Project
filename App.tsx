@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User, UserRole, FoodPosting, FoodStatus, Notification, Rating } from './types';
 import { storage, calculateDistance } from './services/storageService';
@@ -43,6 +44,7 @@ export default function App() {
   const [foodImage, setFoodImage] = useState<string | null>(null);
   const [safetyVerdict, setSafetyVerdict] = useState<{isSafe: boolean, reasoning: string} | undefined>(undefined);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   
   // Image Editing State
   const [isEditingImage, setIsEditingImage] = useState(false);
@@ -199,6 +201,7 @@ export default function App() {
         setSelectedTags([]);
         setImageEditPrompt('');
         setIsEditingImage(false);
+        setIsProcessingPayment(false);
     }
   }, [isAddingFood, user]);
 
@@ -471,37 +474,51 @@ export default function App() {
     if (!foodImage) { alert("Please take a photo of the food."); return; }
     if (!foodLine1 || !foodLine2 || !foodPincode) { alert("Please enter a valid pickup address."); return; }
 
-    const newPost: FoodPosting = {
-      id: Math.random().toString(36).substr(2, 9), 
-      donorId: user.id, 
-      donorName: user?.name || 'Unknown Donor', 
-      donorOrg: user.orgName,
-      foodName, 
-      description: foodDescription,
-      quantity: `${quantityNum} ${unit}`,
-      location: { 
-          line1: foodLine1, 
-          line2: foodLine2, 
-          landmark: foodLandmark, 
-          pincode: foodPincode, 
-          lat: foodLat || userLocation?.lat, 
-          lng: foodLng || userLocation?.lng 
-      },
-      expiryDate, 
-      status: FoodStatus.AVAILABLE, 
-      imageUrl: foodImage, 
-      safetyVerdict,
-      foodTags: selectedTags,
-      createdAt: Date.now()
-    };
-    storage.savePosting(newPost);
-    setIsAddingFood(false);
-    setPostings(storage.getPostings());
+    setIsProcessingPayment(true);
     
-    // Reset Form
-    setFoodName(''); setFoodDescription(''); setQuantityNum(''); setFoodImage(null); setSafetyVerdict(undefined);
-    setExpiryDate(''); setFoodLine1(''); setFoodLine2(''); setFoodLandmark(''); setFoodPincode(''); setSelectedTags([]);
-    setFoodLat(undefined); setFoodLng(undefined);
+    // Simulate Payment
+    try {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        const newPost: FoodPosting = {
+            id: Math.random().toString(36).substr(2, 9), 
+            donorId: user.id, 
+            donorName: user?.name || 'Unknown Donor', 
+            donorOrg: user.orgName,
+            foodName, 
+            description: foodDescription,
+            quantity: `${quantityNum} ${unit}`,
+            location: { 
+                line1: foodLine1, 
+                line2: foodLine2, 
+                landmark: foodLandmark, 
+                pincode: foodPincode, 
+                lat: foodLat || userLocation?.lat, 
+                lng: foodLng || userLocation?.lng 
+            },
+            expiryDate, 
+            status: FoodStatus.AVAILABLE, 
+            imageUrl: foodImage, 
+            safetyVerdict,
+            foodTags: selectedTags,
+            createdAt: Date.now(),
+            platformFeePaid: true
+        };
+        storage.savePosting(newPost);
+        setPostings(storage.getPostings());
+        
+        // Reset Form
+        setFoodName(''); setFoodDescription(''); setQuantityNum(''); setFoodImage(null); setSafetyVerdict(undefined);
+        setExpiryDate(''); setFoodLine1(''); setFoodLine2(''); setFoodLandmark(''); setFoodPincode(''); setSelectedTags([]);
+        setFoodLat(undefined); setFoodLng(undefined);
+        
+        setIsAddingFood(false);
+        alert("Payment of ₹5 successful! Food donation posted.");
+    } catch (e) {
+        alert("Payment failed. Please try again.");
+    } finally {
+        setIsProcessingPayment(false);
+    }
   };
 
   const handleDonorApprove = () => {
@@ -652,7 +669,7 @@ export default function App() {
                     {user?.role === UserRole.DONOR ? "Your active donations will appear here. Start by posting some food!" : "No active items found in this category. Check back soon!"}
                 </p>
                 {user?.role === UserRole.DONOR && activeTab === 'active' && (
-                        <button onClick={() => setIsAddingFood(true)} className="mt-8 px-8 py-4 bg-emerald-600 text-white font-black rounded-2xl uppercase text-xs tracking-widest shadow-xl shadow-emerald-200/50 hover:bg-emerald-700 hover:scale-105 transition-all">
+                        <button onClick={() => setIsAddingFood(true)} className="mt-8 px-8 py-4 bg-emerald-600 text-white font-black rounded-2xl uppercase text-xs tracking-widest shadow-xl shadow-emerald-200/50 hover:bg-emerald-700 hover:scale-110 transition-all">
                             Donate Food Now
                         </button>
                 )}
@@ -925,8 +942,36 @@ export default function App() {
                             </div>
                         </div>
 
-                        <button className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs shadow-xl shadow-slate-200 transform hover:-translate-y-0.5 active:translate-y-0 transition-all">
-                            Post Donation
+                        {/* Platform Fee Notice */}
+                        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600">
+                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                </div>
+                                <div>
+                                    <p className="text-xs font-black text-slate-700 uppercase tracking-wide">Platform Fee</p>
+                                    <p className="text-[10px] text-slate-400 font-bold">Standard listing charge</p>
+                                </div>
+                            </div>
+                            <div className="text-xl font-black text-slate-800 tracking-tight">₹5</div>
+                        </div>
+
+                        <button 
+                            type="submit" 
+                            disabled={isProcessingPayment}
+                            className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs shadow-xl shadow-slate-200 transform hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-3"
+                        >
+                            {isProcessingPayment ? (
+                                <>
+                                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Processing ₹5 Payment...
+                                </>
+                            ) : (
+                                'Pay ₹5 & Post Donation'
+                            )}
                         </button>
                     </form>
                 </div>
