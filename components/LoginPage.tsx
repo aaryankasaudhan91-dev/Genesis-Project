@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { User, UserRole } from '../types';
 import { storage } from '../services/storageService';
@@ -335,7 +336,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
       try {
           // Ensure we have an authenticated user (from the OTP step)
-          if (!auth.currentUser) {
+          if (!auth || !auth.currentUser) {
               throw new Error("Session expired. Please verify OTP again.");
           }
 
@@ -406,7 +407,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     try {
         let firebaseUser;
         
-        if (auth.currentUser) {
+        if (auth && auth.currentUser) {
             firebaseUser = auth.currentUser;
             await updateProfile(firebaseUser, {
                 displayName: regName,
@@ -832,12 +833,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                     
                     <form onSubmit={handleLoginVerifyOtp} className="space-y-5">
                         <div className="space-y-1">
-                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">One Time Password</label>
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Verification Code</label>
                             <input 
                                 type="text" 
                                 value={otp} 
                                 onChange={e => setOtp(e.target.value)} 
-                                placeholder="------"
+                                placeholder="123456"
                                 className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100 tracking-widest"
                             />
                         </div>

@@ -45,6 +45,7 @@ export default function App() {
   const [safetyVerdict, setSafetyVerdict] = useState<{isSafe: boolean, reasoning: string} | undefined>(undefined);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   
   // Image Editing State
   const [isEditingImage, setIsEditingImage] = useState(false);
@@ -202,6 +203,7 @@ export default function App() {
         setImageEditPrompt('');
         setIsEditingImage(false);
         setShowPaymentModal(false);
+        setIsProcessingPayment(false);
     }
   }, [isAddingFood, user]);
 
@@ -215,11 +217,13 @@ export default function App() {
         if (activeTab === 'opportunities') {
             let opportunities = filtered.filter(p => (p.status === FoodStatus.AVAILABLE || (p.status === FoodStatus.REQUESTED && !p.volunteerId)));
             
-            if (user.searchRadius && userLocation) {
+            // Apply Search Radius Filter
+            const radius = user.searchRadius || 10;
+            if (userLocation) {
                 opportunities = opportunities.filter(p => {
                     if (p.location.lat && p.location.lng) {
                         const dist = calculateDistance(userLocation.lat, userLocation.lng, p.location.lat, p.location.lng);
-                        return dist <= (user.searchRadius || 10);
+                        return dist <= radius;
                     }
                     return true;
                 });
@@ -231,11 +235,14 @@ export default function App() {
     } else if (user.role === UserRole.REQUESTER) {
         if (activeTab === 'browse') {
             let available = filtered.filter(p => p.status === FoodStatus.AVAILABLE);
-            if (user.searchRadius && userLocation) {
+            
+            // Apply Search Radius Filter
+            const radius = user.searchRadius || 10;
+            if (userLocation) {
                 available = available.filter(p => {
                     if (p.location.lat && p.location.lng) {
                         const dist = calculateDistance(userLocation.lat, userLocation.lng, p.location.lat, p.location.lng);
-                        return dist <= (user.searchRadius || 10);
+                        return dist <= radius;
                     }
                     return true; 
                 });
@@ -474,6 +481,7 @@ export default function App() {
     if (!foodImage) { alert("Please take a photo of the food."); return; }
     if (!foodLine1 || !foodLine2 || !foodPincode) { alert("Please enter a valid pickup address."); return; }
     
+    setIsProcessingPayment(true);
     // Show Payment Modal instead of direct processing
     setShowPaymentModal(true);
   };
@@ -515,6 +523,7 @@ export default function App() {
     setFoodLat(undefined); setFoodLng(undefined);
     
     setShowPaymentModal(false);
+    setIsProcessingPayment(false);
     setIsAddingFood(false);
     // Success alert handled visually by the modal, but a final toast is good practice
     // For now, the modal's internal success state provides feedback.
@@ -1029,7 +1038,7 @@ export default function App() {
             <PaymentModal 
                 amount={5} 
                 onSuccess={handlePaymentSuccess} 
-                onCancel={() => setShowPaymentModal(false)} 
+                onCancel={() => { setShowPaymentModal(false); setIsProcessingPayment(false); }} 
             />
         )}
     </Layout>

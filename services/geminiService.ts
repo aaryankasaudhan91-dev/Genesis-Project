@@ -1,8 +1,6 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 // --- Types ---
 export interface ImageAnalysisResult {
   isSafe: boolean;
@@ -25,7 +23,7 @@ export interface ReverseGeocodeResult {
   pincode: string;
 }
 
-// Helper to strip data URL prefix
+// Helper to strip data URL prefix for API calls
 const getBase64 = (dataUrl: string) => {
     return dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
 };
@@ -35,11 +33,14 @@ const cleanJson = (text: string) => {
     return text.replace(/```json\n?|```/g, '').trim();
 };
 
-// --- 1. Intelligent Food Safety Tips (Updated to Fast Model) ---
+const apiKey = process.env.API_KEY || '';
+const ai = new GoogleGenAI({ apiKey });
+
+// --- 1. Intelligent Food Safety Tips ---
 export const getFoodSafetyTips = async (foodName: string): Promise<string> => {
   try {
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-lite', // FAST AI RESPONSE
+        model: 'gemini-3-flash-preview',
         contents: `You are a professional Food Safety Officer. 
         Provide 3 specific, high-priority safety & storage tips for donating "${foodName}".
         Format as a concise bullet list. Total length under 60 words.
@@ -70,23 +71,26 @@ export const analyzeFoodSafetyImage = async (base64Data: string): Promise<ImageA
 
   try {
       const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-image',
+          model: 'gemini-3-flash-preview',
           contents: {
               parts: [
                   { inlineData: { mimeType: 'image/jpeg', data: getBase64(base64Data) } },
                   { text: prompt }
               ]
+          },
+          config: {
+              responseMimeType: 'application/json'
           }
       });
 
-      const text = cleanJson(response.text || "{}");
-      const result = JSON.parse(text);
+      const text = response.text || "{}";
+      const jsonResult = JSON.parse(text);
       
       return {
-          isSafe: typeof result.isSafe === 'boolean' ? result.isSafe : true,
-          reasoning: result.reasoning || "Please physically verify food freshness and packaging integrity.",
-          detectedFoodName: result.detectedFoodName || "Donated Meal",
-          confidence: result.confidence || 0.85
+          isSafe: typeof jsonResult.isSafe === 'boolean' ? jsonResult.isSafe : true,
+          reasoning: jsonResult.reasoning || "Please physically verify food freshness and packaging integrity.",
+          detectedFoodName: jsonResult.detectedFoodName || "Donated Meal",
+          confidence: jsonResult.confidence || 0.85
       };
   } catch (error) {
       console.error("Gemini Image Analysis Error:", error);
@@ -99,35 +103,32 @@ export const analyzeFoodSafetyImage = async (base64Data: string): Promise<ImageA
   }
 };
 
-// --- NEW: Image Editing (Nano Banana) ---
+// --- Image Editing ---
 export const editImage = async (base64Image: string, prompt: string): Promise<string | null> => {
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [
-          { inlineData: { mimeType: 'image/jpeg', data: getBase64(base64Image) } },
-          { text: prompt }
-        ],
-      },
-    });
-    
-    // Find the image part in the response
-    if (response.candidates?.[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) {
-                return `data:image/png;base64,${part.inlineData.data}`;
-            }
-        }
-    }
-    return null;
+      const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: {
+              parts: [
+                  { inlineData: { mimeType: 'image/jpeg', data: getBase64(base64Image) } },
+                  { text: prompt }
+              ]
+          }
+      });
+
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+          if (part.inlineData) {
+              return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+          }
+      }
+      return null;
   } catch (e) {
-    console.error("Image Edit Error", e);
-    return null;
+      console.error("Gemini Image Editing Error:", e);
+      return null;
   }
 };
 
-// --- NEW: Audio Transcription (STT) ---
+// --- Audio Transcription (Multimodal) ---
 export const transcribeAudio = async (base64Audio: string, mimeType: string = 'audio/wav'): Promise<string> => {
     try {
         const response = await ai.models.generateContent({
@@ -141,33 +142,36 @@ export const transcribeAudio = async (base64Audio: string, mimeType: string = 'a
         });
         return response.text || "";
     } catch (e) {
-        console.error("Transcription Error", e);
+        console.error("Gemini Transcription Error", e);
         return "";
     }
 };
 
-// --- NEW: Text to Speech (TTS) ---
+// --- Text-to-Speech (Native) ---
 export const generateSpeech = async (text: string): Promise<string | null> => {
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-preview-tts',
-            contents: { parts: [{ text }] },
+            contents: { parts: [{ text: text }] },
             config: {
                 responseModalities: [Modality.AUDIO],
                 speechConfig: {
-                    voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
+                    voiceConfig: {
+                        prebuiltVoiceConfig: { voiceName: 'Kore' }
+                    }
                 }
             }
         });
+        
         const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
         return audioData || null;
     } catch (e) {
-        console.error("TTS Error", e);
+        console.error("Gemini TTS Error:", e);
         return null;
     }
 };
 
-// --- NEW: Search Grounding ---
+// --- Search Grounding ---
 export const askWithSearch = async (query: string): Promise<{text: string, sources: any[]}> => {
     try {
         const response = await ai.models.generateContent({
@@ -177,46 +181,64 @@ export const askWithSearch = async (query: string): Promise<{text: string, sourc
                 tools: [{ googleSearch: {} }]
             }
         });
+        
         const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
         return { text: response.text || "No information found.", sources: groundingChunks };
     } catch (e) {
-        console.error("Search Error", e);
+        console.error("Gemini Search Error", e);
         return { text: "Search unavailable at the moment.", sources: [] };
     }
 };
 
-// --- NEW: Maps Grounding ---
+// --- Maps Grounding ---
 export const askWithMaps = async (query: string, location?: {lat: number, lng: number}): Promise<{text: string, sources: any[]}> => {
     try {
-        // STRICT CONFIGURATION for Maps Grounding
-        const config: any = {
-            tools: [{ googleMaps: {} }]
-        };
-        
-        if (location) {
-            config.toolConfig = {
-                retrievalConfig: {
-                    latLng: {
-                        latitude: location.lat,
-                        longitude: location.lng
-                    }
-                }
-            };
-        }
-
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.5-flash', // Maps grounding is supported on 2.5
             contents: query,
-            config: config
+            config: {
+                tools: [{ googleMaps: {} }],
+                toolConfig: location ? {
+                    retrievalConfig: {
+                        latLng: {
+                            latitude: location.lat,
+                            longitude: location.lng
+                        }
+                    }
+                } : undefined
+            }
         });
         
         const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-        // Ensure text exists even if not grounded, though grounding usually returns both
         return { text: response.text || "I couldn't find specific location details.", sources: groundingChunks };
     } catch (e) {
-        console.error("Maps Grounding Error", e);
+        console.error("Gemini Maps Grounding Error", e);
         return { text: "Location services unavailable.", sources: [] };
     }
+};
+
+// --- Thinking Mode (Complex Queries) ---
+export const askWithThinking = async (query: string, userContext?: string): Promise<string> => {
+  try {
+      const response = await ai.models.generateContent({
+          model: 'gemini-3-pro-preview',
+          contents: `You are RescueBot, an expert AI assistant for MEALers connect.
+          User Context: ${userContext || 'None provided'}
+          
+          Analyze the following query deeply and provide a comprehensive, well-structured answer.
+          
+          Query: ${query}`,
+          config: {
+              thinkingConfig: {
+                  thinkingBudget: 32768
+              }
+          }
+      });
+      return response.text || "I couldn't generate a deep thought response.";
+  } catch (e) {
+      console.error("Gemini Thinking Error", e);
+      return "Thinking process failed. Please try a simpler query or check the budget.";
+  }
 };
 
 // --- 3. Personalized Pickup Verification ---
@@ -230,16 +252,16 @@ export const verifyPickupImage = async (base64Data: string): Promise<{ isValid: 
   
   try {
       const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-image',
+          model: 'gemini-3-flash-preview',
           contents: {
               parts: [
                   { inlineData: { mimeType: 'image/jpeg', data: getBase64(base64Data) } },
                   { text: prompt }
               ]
-          }
+          },
+          config: { responseMimeType: 'application/json' }
       });
-      const text = cleanJson(response.text || "{}");
-      return JSON.parse(text);
+      return JSON.parse(response.text || "{}");
   } catch {
       return { isValid: true, feedback: "Pickup verified successfully. Safe travels!" };
   }
@@ -256,22 +278,22 @@ export const verifyDeliveryImage = async (base64Data: string): Promise<{ isValid
 
   try {
       const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-image',
+          model: 'gemini-3-flash-preview',
           contents: {
               parts: [
                   { inlineData: { mimeType: 'image/jpeg', data: getBase64(base64Data) } },
                   { text: prompt }
               ]
-          }
+          },
+          config: { responseMimeType: 'application/json' }
       });
-      const text = cleanJson(response.text || "{}");
-      return JSON.parse(text);
+      return JSON.parse(response.text || "{}");
   } catch {
       return { isValid: true, feedback: "Delivery verified. Thank you for making a difference!" };
   }
 };
 
-// --- 5. Smart Address Parsing (Pincode) ---
+// --- 5. Smart Address Parsing ---
 export const getAddressFromPincode = async (pincode: string): Promise<ReverseGeocodeResult | null> => {
   try {
       const response = await ai.models.generateContent({
@@ -303,7 +325,7 @@ export const getRouteInsights = async (location: string, userLat?: number, userL
   try {
       const response = await ai.models.generateContent({
           model: 'gemini-3-flash-preview',
-          contents: `Act as a local guide. Provide a 1-sentence summary of the location "${location}". Mention if it is a residential or commercial area.`
+          contents: `Act as a local guide. Provide a 1-sentence summary of the location "${location}".`
       });
       return {
           text: response.text || "Location identified.",
@@ -314,7 +336,7 @@ export const getRouteInsights = async (location: string, userLat?: number, userL
   }
 };
 
-// --- 7. Advanced Route Optimization ---
+// --- 7. Advanced Route Optimization (Using Pro model for reasoning) ---
 export const getOptimizedRoute = async (origin: string, destination: string, waypoint?: string): Promise<RouteOptimizationResult | null> => {
   const routeDesc = waypoint 
       ? `from "${origin}" to "${destination}" stopping at "${waypoint}"`
@@ -322,18 +344,19 @@ export const getOptimizedRoute = async (origin: string, destination: string, way
 
   try {
       const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
+          model: 'gemini-3-pro-preview', // Using Pro for complex logic
           contents: `Act as an advanced logistics algorithm. Estimate a driving route ${routeDesc}.`,
           config: {
               responseMimeType: 'application/json',
               responseSchema: {
                   type: Type.OBJECT,
                   properties: {
-                      summary: { type: Type.STRING, description: "E.g., 'Fastest route via NH44'" },
-                      estimatedDuration: { type: Type.STRING, description: "E.g., '45 mins'" },
-                      steps: { type: Type.ARRAY, items: { type: Type.STRING }, description: "3 major navigation milestones" },
-                      trafficTips: { type: Type.STRING, description: "A smart tip about parking or traffic" }
-                  }
+                      summary: { type: Type.STRING },
+                      estimatedDuration: { type: Type.STRING },
+                      steps: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      trafficTips: { type: Type.STRING }
+                  },
+                  required: ["summary", "estimatedDuration", "steps"]
               }
           }
       });
@@ -363,10 +386,10 @@ export const calculateLiveEta = async (
 
 // --- 9. Geocoding Fallback ---
 export const reverseGeocode = async (lat: number, lng: number): Promise<ReverseGeocodeResult | null> => {
-    return null; // Using Google Maps service instead
+    return null; 
 };
 
-// --- 10. Creative Avatar Generation (SVG) ---
+// --- 10. Creative Avatar Generation (SVG via Text) ---
 export const generateAvatar = async (userName: string): Promise<string | null> => {
   try {
     const prompt = `

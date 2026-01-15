@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { User } from '../types';
-import { askWithSearch, askWithMaps } from '../services/geminiService';
+import { askWithSearch, askWithMaps, askWithThinking } from '../services/geminiService';
 import { GoogleGenAI } from "@google/genai";
 
 interface SupportChatModalProps {
@@ -28,7 +28,7 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [mode, setMode] = useState<'support' | 'search' | 'maps'>('support');
+  const [mode, setMode] = useState<'support' | 'search' | 'maps' | 'thinking'>('support');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,6 +57,9 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
           const result = await askWithMaps(userMsg.text, location);
           aiText = result.text;
           sources = result.sources;
+      } else if (mode === 'thinking') {
+          const context = `Name: ${user.name}, Role: ${user.role}`;
+          aiText = await askWithThinking(userMsg.text, context);
       } else {
           // Default Support Mode
           const apiKey = process.env.API_KEY;
@@ -99,7 +102,7 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
                     <div>
                         <h3 className="font-black text-white text-sm uppercase tracking-wide">RescueBot</h3>
                         <p className="text-slate-400 text-xs font-medium">
-                            {mode === 'search' ? 'Web Search Mode' : mode === 'maps' ? 'Maps Mode' : 'Support Mode'}
+                            {mode === 'search' ? 'Web Search Mode' : mode === 'maps' ? 'Maps Mode' : mode === 'thinking' ? 'Deep Reasoning Mode' : 'Support Mode'}
                         </p>
                     </div>
                 </div>
@@ -109,10 +112,11 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
             </div>
             
             {/* Mode Toggles */}
-            <div className="flex gap-2">
-                <button onClick={() => setMode('support')} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${mode === 'support' ? 'bg-white text-slate-900' : 'bg-white/10 text-slate-400 hover:bg-white/20'}`}>Support</button>
-                <button onClick={() => setMode('search')} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${mode === 'search' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'bg-white/10 text-slate-400 hover:bg-white/20'}`}>Web Search</button>
-                <button onClick={() => setMode('maps')} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${mode === 'maps' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-white/10 text-slate-400 hover:bg-white/20'}`}>Maps</button>
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                <button onClick={() => setMode('support')} className={`flex-1 py-1.5 px-3 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap ${mode === 'support' ? 'bg-white text-slate-900' : 'bg-white/10 text-slate-400 hover:bg-white/20'}`}>Support</button>
+                <button onClick={() => setMode('thinking')} className={`flex-1 py-1.5 px-3 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap ${mode === 'thinking' ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/30' : 'bg-white/10 text-slate-400 hover:bg-white/20'}`}>Deep Think</button>
+                <button onClick={() => setMode('search')} className={`flex-1 py-1.5 px-3 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap ${mode === 'search' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' : 'bg-white/10 text-slate-400 hover:bg-white/20'}`}>Web</button>
+                <button onClick={() => setMode('maps')} className={`flex-1 py-1.5 px-3 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap ${mode === 'maps' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-white/10 text-slate-400 hover:bg-white/20'}`}>Maps</button>
             </div>
         </div>
         
@@ -165,7 +169,7 @@ const SupportChatModal: React.FC<SupportChatModalProps> = ({ user, onClose }) =>
                 type="text" 
                 value={inputText} 
                 onChange={e => setInputText(e.target.value)} 
-                placeholder={mode === 'search' ? "Ask Google..." : mode === 'maps' ? "Find places..." : "Type your question..."}
+                placeholder={mode === 'search' ? "Ask Google..." : mode === 'maps' ? "Find places..." : mode === 'thinking' ? "Ask complex question..." : "Type your question..."}
                 className="flex-1 bg-slate-50 border border-slate-200 text-slate-800 px-4 py-3 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-slate-500 transition-all" 
             />
             <button type="submit" disabled={!inputText.trim() || isTyping} className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white p-3 rounded-xl transition-all shadow-lg shadow-slate-200">

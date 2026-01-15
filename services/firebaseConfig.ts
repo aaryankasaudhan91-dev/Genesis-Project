@@ -28,7 +28,8 @@ const firebaseConfig = {
 };
 
 let app;
-let auth: any;
+// Initialize with a mock object so 'auth' is never undefined
+let auth: any = { currentUser: null }; 
 let db: any;
 let storage: any;
 let googleProvider: any;
@@ -67,6 +68,15 @@ const mockUser = {
     emailVerified: true
 };
 
+// Helper to update auth state safely
+const updateMockAuthState = (user: any) => {
+    if (auth) {
+        auth.currentUser = user;
+    } else {
+        auth = { currentUser: user };
+    }
+};
+
 // Wrapper functions that switch between Real Firebase and Simulation
 
 const signInWithPopup = async (authArg: any, provider: any) => {
@@ -74,7 +84,9 @@ const signInWithPopup = async (authArg: any, provider: any) => {
     
     await new Promise(r => setTimeout(r, 1000));
     console.log("[Simulation] Google Sign In Successful");
-    return { user: { ...mockUser } } as any;
+    const user = { ...mockUser };
+    updateMockAuthState(user);
+    return { user } as any;
 };
 
 const signInWithEmailAndPassword = async (authArg: any, email: string, pass: string) => {
@@ -82,7 +94,9 @@ const signInWithEmailAndPassword = async (authArg: any, email: string, pass: str
     
     await new Promise(r => setTimeout(r, 1000));
     console.log(`[Simulation] Login with ${email}`);
-    return { user: { ...mockUser, email } } as any;
+    const user = { ...mockUser, email };
+    updateMockAuthState(user);
+    return { user } as any;
 };
 
 const createUserWithEmailAndPassword = async (authArg: any, email: string, pass: string) => {
@@ -90,7 +104,9 @@ const createUserWithEmailAndPassword = async (authArg: any, email: string, pass:
     
     await new Promise(r => setTimeout(r, 1000));
     console.log(`[Simulation] Register with ${email}`);
-    return { user: { ...mockUser, email, uid: `sim-${Date.now()}` } } as any;
+    const user = { ...mockUser, email, uid: `sim-${Date.now()}` };
+    updateMockAuthState(user);
+    return { user } as any;
 };
 
 const signInWithPhoneNumber = async (authArg: any, phone: string, verifier: any) => {
@@ -100,7 +116,11 @@ const signInWithPhoneNumber = async (authArg: any, phone: string, verifier: any)
     console.log(`[Simulation] OTP sent to ${phone}`);
     return {
         confirm: async (otp: string) => {
-            if (otp === "123456") return { user: { ...mockUser, phoneNumber: phone } };
+            if (otp === "123456") {
+                const user = { ...mockUser, phoneNumber: phone };
+                updateMockAuthState(user);
+                return { user };
+            }
             throw new Error("Invalid OTP (Simulation: Use 123456)");
         },
         verificationId: "sim-vid-123"
@@ -118,7 +138,9 @@ const signInWithCredential = async (authArg: any, credential: any) => {
     }
 
     console.log(`[Simulation] Signed in with credential`);
-    return { user: { ...mockUser } } as any;
+    const user = { ...mockUser };
+    updateMockAuthState(user);
+    return { user } as any;
 };
 
 const updatePassword = async (user: any, newPassword: string) => {
@@ -132,6 +154,7 @@ const updatePassword = async (user: any, newPassword: string) => {
 const signOut = async (authArg: any) => {
     if (isConfigured) return firebaseSignOut(authArg);
     console.log("[Simulation] Signed Out");
+    updateMockAuthState(null);
     return;
 };
 
@@ -139,6 +162,9 @@ const updateProfile = async (user: any, profile: any) => {
     if (isConfigured) return firebaseUpdateProfile(user, profile);
     // In mock, just mutate the object locally for current session
     Object.assign(user, profile);
+    if (auth && auth.currentUser && auth.currentUser.uid === user.uid) {
+        Object.assign(auth.currentUser, profile);
+    }
     return;
 };
 
@@ -177,7 +203,7 @@ export {
     signInWithPopup, 
     signInWithEmailAndPassword, 
     createUserWithEmailAndPassword, 
-    updatePassword,
+    updatePassword, 
     onAuthStateChanged, 
     signOut, 
     updateProfile,
