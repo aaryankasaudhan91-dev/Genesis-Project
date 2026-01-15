@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { User, UserRole } from '../types';
 import { storage } from '../services/storageService';
@@ -639,7 +638,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                                     maxLength={10}
                                     value={phoneForAuth} 
                                     onChange={e => setPhoneForAuth(e.target.value.replace(/\D/g, ''))} 
-                                    placeholder="9876543210"
+                                    placeholder="9xxxxxxxxx"
                                     className="w-full pl-20 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
                                 />
                             </div>
@@ -797,7 +796,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                                     value={phoneForAuth} 
                                     maxLength={10}
                                     onChange={e => setPhoneForAuth(e.target.value.replace(/\D/g, ''))} 
-                                    placeholder="9876543210"
+                                    placeholder="9xxxxxxxxx"
                                     className="w-full pl-20 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
                                 />
                             </div>
@@ -838,7 +837,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                                 type="text" 
                                 value={otp} 
                                 onChange={e => setOtp(e.target.value)} 
-                                placeholder="123456"
+                                placeholder="------"
                                 className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100 tracking-widest"
                             />
                         </div>
@@ -903,7 +902,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                                             value={regPhone} 
                                             maxLength={10}
                                             onChange={e => setRegPhone(e.target.value.replace(/\D/g, ''))} 
-                                            placeholder="9876543210" 
+                                            placeholder="9xxxxxxxxx" 
                                             className="w-full pl-20 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" 
                                         />
                                     </div>
