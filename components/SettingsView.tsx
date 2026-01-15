@@ -18,6 +18,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdate, onDelete, o
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [language, setLanguage] = useState('English');
   const [searchRadius, setSearchRadius] = useState<number>(user.searchRadius || 10);
+  const [donationFilter, setDonationFilter] = useState<'ALL' | 'FOOD' | 'CLOTHES'>(user.donationTypeFilter || 'ALL');
   
   // Theme State with persistence
   const [theme, setTheme] = useState(() => {
@@ -51,6 +52,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdate, onDelete, o
   const handleRadiusChange = (radius: number) => {
       setSearchRadius(radius);
       onUpdate({ searchRadius: radius });
+  };
+
+  const handleFilterChange = (filter: 'ALL' | 'FOOD' | 'CLOTHES') => {
+      setDonationFilter(filter);
+      onUpdate({ donationTypeFilter: filter });
   };
 
   return (
@@ -106,30 +112,53 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdate, onDelete, o
                 </div>
 
                 {(user.role === UserRole.REQUESTER || user.role === UserRole.VOLUNTEER) && (
-                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-white rounded-xl shadow-sm text-slate-600">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    <>
+                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-white rounded-xl shadow-sm text-slate-600">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-slate-700">Search Radius</span>
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Filter by distance</span>
+                                </div>
                             </div>
-                            <div className="flex flex-col">
-                                <span className="font-bold text-slate-700">Search Radius</span>
-                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Filter available food</span>
-                            </div>
+                            <select 
+                                value={searchRadius} 
+                                onChange={e => handleRadiusChange(Number(e.target.value))} 
+                                className="bg-white border border-slate-200 text-slate-600 text-sm font-bold rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            >
+                                <option value={1}>1 km</option>
+                                <option value={3}>3 km</option>
+                                <option value={5}>5 km</option>
+                                <option value={10}>10 km</option>
+                                <option value={20}>20 km</option>
+                                <option value={50}>50 km</option>
+                                <option value={100}>100 km</option>
+                            </select>
                         </div>
-                        <select 
-                            value={searchRadius} 
-                            onChange={e => handleRadiusChange(Number(e.target.value))} 
-                            className="bg-white border border-slate-200 text-slate-600 text-sm font-bold rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        >
-                            <option value={1}>1 km</option>
-                            <option value={3}>3 km</option>
-                            <option value={5}>5 km</option>
-                            <option value={10}>10 km</option>
-                            <option value={20}>20 km</option>
-                            <option value={50}>50 km</option>
-                            <option value={100}>100 km</option>
-                        </select>
-                    </div>
+
+                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-white rounded-xl shadow-sm text-slate-600">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-slate-700">Item Filter</span>
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Food vs Clothes</span>
+                                </div>
+                            </div>
+                            <select 
+                                value={donationFilter} 
+                                onChange={e => handleFilterChange(e.target.value as any)} 
+                                className="bg-white border border-slate-200 text-slate-600 text-sm font-bold rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            >
+                                <option value="ALL">All Items</option>
+                                <option value="FOOD">Food Only</option>
+                                <option value="CLOTHES">Clothes Only</option>
+                            </select>
+                        </div>
+                    </>
                 )}
             </div>
 

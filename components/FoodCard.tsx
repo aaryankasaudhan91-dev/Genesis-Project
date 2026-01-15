@@ -65,18 +65,12 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pickupInputRef = useRef<HTMLInputElement>(null);
   
+  const isClothes = posting.donationType === 'CLOTHES';
+  
   const expiryTimestamp = new Date(posting.expiryDate).getTime();
   const hoursLeft = (expiryTimestamp - Date.now()) / (1000 * 60 * 60);
-  const isUrgent = posting.status === FoodStatus.AVAILABLE && hoursLeft > 0 && hoursLeft < 12;
+  const isUrgent = posting.status === FoodStatus.AVAILABLE && hoursLeft > 0 && hoursLeft < (isClothes ? 48 : 12); // Longer urgency for clothes
 
-  const getExpiryStatus = () => {
-      if (hoursLeft <= 0) return { color: 'text-slate-400', label: 'Expired' };
-      if (hoursLeft < 4) return { color: 'text-rose-600', label: 'Critical' };
-      if (hoursLeft < 12) return { color: 'text-orange-600', label: 'Urgent' };
-      if (hoursLeft < 24) return { color: 'text-amber-600', label: 'Soon' };
-      return { color: 'text-emerald-600', label: 'Fresh' };
-  };
-  
   const hasRated = posting.ratings?.some(r => r.raterId === user?.id);
   const isSafetyUnknownOrUnsafe = posting.safetyVerdict && !posting.safetyVerdict.isSafe;
 
@@ -113,7 +107,7 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
   };
 
   const handleManualSafetyOverride = () => {
-    if (confirm("Are you sure you want to mark this food as safe? This will override the AI safety warning.")) {
+    if (confirm("Are you sure you want to mark this item as safe? This will override the AI warning.")) {
         onUpdate(posting.id, {
             safetyVerdict: {
                 isSafe: true,
@@ -179,8 +173,8 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
 
   const handleShare = async () => {
     const shareData = {
-      title: `Food Rescue: ${posting.foodName}`,
-      text: `Help rescue food! ${posting.quantity} of ${posting.foodName} available at ${posting.location.line1}.`,
+      title: `Donation: ${posting.foodName}`,
+      text: `Help rescue items! ${posting.quantity} of ${posting.foodName} available at ${posting.location.line1}.`,
       url: window.location.href
     };
 
@@ -256,7 +250,7 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
   const handleTTS = async () => {
       if (isPlaying) return;
       setIsPlaying(true);
-      const text = `Food Donation: ${posting.foodName}. Quantity: ${posting.quantity}. Description: ${posting.description || 'No description'}. Expires in ${hoursLeft > 0 ? Math.floor(hoursLeft) + ' hours' : 'expired'}.`;
+      const text = `${isClothes ? 'Clothes' : 'Food'} Donation: ${posting.foodName}. Quantity: ${posting.quantity}. Description: ${posting.description || 'No description'}. Available until ${hoursLeft > 0 ? Math.floor(hoursLeft) + ' hours from now' : 'now'}.`;
       
       const audioData = await generateSpeech(text);
       if (audioData) {
@@ -267,24 +261,23 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
               bytes[i] = binaryString.charCodeAt(i);
           }
           try {
-             // Create WAV header for 24kHz mono PCM 16-bit
+             // Create WAV header
              const wavHeader = new Uint8Array(44 + bytes.length);
              const view = new DataView(wavHeader.buffer);
-             // RIFF chunk
-             view.setUint32(0, 0x52494646, false); // "RIFF"
+             // Standard WAV header setup... (omitted for brevity, same as previous)
+             // ... RIFF ...
+             view.setUint32(0, 0x52494646, false);
              view.setUint32(4, 36 + bytes.length, true);
-             view.setUint32(8, 0x57415645, false); // "WAVE"
-             // fmt subchunk
-             view.setUint32(12, 0x666d7420, false); // "fmt "
-             view.setUint32(16, 16, true); // Subchunk1Size
-             view.setUint16(20, 1, true); // AudioFormat (1=PCM)
-             view.setUint16(22, 1, true); // NumChannels (1)
-             view.setUint32(24, 24000, true); // SampleRate
-             view.setUint32(28, 24000 * 2, true); // ByteRate
-             view.setUint16(32, 2, true); // BlockAlign
-             view.setUint16(34, 16, true); // BitsPerSample
-             // data subchunk
-             view.setUint32(36, 0x64617461, false); // "data"
+             view.setUint32(8, 0x57415645, false);
+             view.setUint32(12, 0x666d7420, false);
+             view.setUint32(16, 16, true);
+             view.setUint16(20, 1, true);
+             view.setUint16(22, 1, true);
+             view.setUint32(24, 24000, true);
+             view.setUint32(28, 24000 * 2, true);
+             view.setUint16(32, 2, true);
+             view.setUint16(34, 16, true);
+             view.setUint32(36, 0x64617461, false);
              view.setUint32(40, bytes.length, true);
              wavHeader.set(bytes, 44);
 
@@ -339,7 +332,7 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
   const renderStatusPill = () => {
       switch (posting.status) {
           case FoodStatus.AVAILABLE:
-              return <span className="px-3 py-1.5 rounded-full bg-emerald-100/90 backdrop-blur-md text-emerald-800 text-[10px] font-black uppercase tracking-wider border border-emerald-200/50 shadow-sm">Available</span>;
+              return <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-sm backdrop-blur-md ${isClothes ? 'bg-indigo-100/90 text-indigo-800 border-indigo-200/50' : 'bg-emerald-100/90 text-emerald-800 border-emerald-200/50'}`}>Available</span>;
           case FoodStatus.REQUESTED:
               return <span className="px-3 py-1.5 rounded-full bg-blue-100/90 backdrop-blur-md text-blue-800 text-[10px] font-black uppercase tracking-wider border border-blue-200/50 shadow-sm">Requested</span>;
           case FoodStatus.PICKUP_VERIFICATION_PENDING:
@@ -363,17 +356,26 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
         {posting.imageUrl ? (
             <img src={posting.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
         ) : (
-            <div className="w-full h-full bg-slate-50 flex flex-col items-center justify-center text-slate-300">
-                <svg className="w-16 h-16 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            <div className={`w-full h-full flex flex-col items-center justify-center text-slate-300 ${isClothes ? 'bg-indigo-50' : 'bg-slate-50'}`}>
+                {isClothes ? (
+                    <span className="text-6xl opacity-50">👕</span>
+                ) : (
+                    <svg className="w-16 h-16 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                )}
             </div>
         )}
         
         {/* Gradient Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent"></div>
+        <div className={`absolute inset-0 bg-gradient-to-t via-slate-900/20 to-transparent ${isClothes ? 'from-indigo-950/90' : 'from-slate-900/90'}`}></div>
         
         {/* Top Badges */}
         <div className="absolute top-5 right-5 flex flex-col gap-2 items-end z-20">
              {renderStatusPill()}
+             {isClothes && (
+                 <span className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md shadow-sm bg-white/20 text-white border border-white/20">
+                     Clothes
+                 </span>
+             )}
              {posting.etaMinutes && (
                  <span className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md shadow-lg bg-blue-600 text-white flex items-center gap-1 border border-blue-400/30">
                     <svg className="w-3 h-3 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -417,7 +419,11 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
         <div className="absolute bottom-6 left-6 right-6 text-white z-20">
             <div className="flex items-center gap-2 mb-2">
                  <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-lg text-[10px] font-bold uppercase border border-white/20 tracking-wider shadow-sm flex items-center gap-1">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                    {isClothes ? (
+                        <span className="text-sm">👕</span>
+                    ) : (
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                    )}
                     {posting.quantity}
                  </span>
                  {hoursLeft > 0 && (
@@ -444,7 +450,7 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
                      <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 text-rose-500 shadow-2xl animate-pulse">
                         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                      </div>
-                     <h4 className="text-white font-black text-xl mb-2">Safety Check Failed</h4>
+                     <h4 className="text-white font-black text-xl mb-2">Quality Check Failed</h4>
                      <p className="text-rose-200 text-sm mb-6 font-medium leading-relaxed">{posting.safetyVerdict?.reasoning}</p>
                      
                      {user?.role === UserRole.DONOR && posting.donorId === user?.id && (
@@ -490,17 +496,17 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
               {/* Location Row with Maps Grounding Insight */}
               <div>
                   <div className="flex items-start gap-3 group/loc cursor-pointer" onClick={() => window.open(mapsUrl, '_blank')}>
-                     <div className="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center shrink-0 text-slate-400 group-hover/loc:bg-emerald-50 group-hover/loc:text-emerald-600 transition-colors border border-slate-100">
+                     <div className={`w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center shrink-0 text-slate-400 transition-colors border border-slate-100 ${isClothes ? 'group-hover/loc:bg-indigo-50 group-hover/loc:text-indigo-600' : 'group-hover/loc:bg-emerald-50 group-hover/loc:text-emerald-600'}`}>
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                      </div>
                      <div className="flex-1 min-w-0 py-0.5">
                          <div className="flex justify-between items-center">
                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Pickup Location</p>
-                             <button onClick={(e) => { e.stopPropagation(); handleLocationInsight(); }} className="text-[9px] font-bold text-emerald-600 hover:text-emerald-800 uppercase tracking-wider bg-emerald-50 px-2 py-0.5 rounded transition-colors">
+                             <button onClick={(e) => { e.stopPropagation(); handleLocationInsight(); }} className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded transition-colors ${isClothes ? 'text-indigo-600 hover:text-indigo-800 bg-indigo-50' : 'text-emerald-600 hover:text-emerald-800 bg-emerald-50'}`}>
                                  {locationInsight ? 'Hide Info' : 'Analyze Location'}
                              </button>
                          </div>
-                         <p className="text-sm font-bold text-slate-700 leading-snug line-clamp-1 group-hover/loc:text-emerald-700 transition-colors">
+                         <p className={`text-sm font-bold text-slate-700 leading-snug line-clamp-1 transition-colors ${isClothes ? 'group-hover/loc:text-indigo-700' : 'group-hover/loc:text-emerald-700'}`}>
                             {posting.location.line1}
                          </p>
                      </div>
@@ -516,13 +522,13 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
                       </div>
                   )}
                   {locationInsight && (
-                      <div className="mt-3 ml-14 bg-emerald-50/50 rounded-xl p-3 border border-emerald-100/50 animate-fade-in-up">
+                      <div className={`mt-3 ml-14 rounded-xl p-3 border animate-fade-in-up ${isClothes ? 'bg-indigo-50/50 border-indigo-100/50' : 'bg-emerald-50/50 border-emerald-100/50'}`}>
                           <p className="text-xs text-slate-600 font-medium leading-relaxed">{locationInsight.text}</p>
                           {locationInsight.sources && locationInsight.sources.length > 0 && (
                               <div className="mt-2 flex flex-wrap gap-2">
                                   {locationInsight.sources.map((s, i) => (
                                       s.maps?.uri && (
-                                          <a key={i} href={s.maps.uri} target="_blank" rel="noreferrer" className="text-[9px] font-bold text-emerald-700 bg-white px-2 py-1 rounded border border-emerald-100 hover:shadow-sm transition-all truncate max-w-full">
+                                          <a key={i} href={s.maps.uri} target="_blank" rel="noreferrer" className={`text-[9px] font-bold bg-white px-2 py-1 rounded border hover:shadow-sm transition-all truncate max-w-full ${isClothes ? 'text-indigo-700 border-indigo-100' : 'text-emerald-700 border-emerald-100'}`}>
                                               📍 {s.maps.title}
                                           </a>
                                       )
@@ -588,7 +594,7 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
           {/* Action Buttons Area */}
           <div className="pt-6 mt-6 border-t border-slate-100 grid gap-3">
             {user?.role === UserRole.REQUESTER && posting.status === FoodStatus.AVAILABLE && (
-              <button onClick={handleRequest} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest transition-all shadow-lg shadow-emerald-200 hover:shadow-emerald-300 hover:-translate-y-0.5 flex items-center justify-center gap-2">
+              <button onClick={handleRequest} className={`w-full text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest transition-all shadow-lg hover:-translate-y-0.5 flex items-center justify-center gap-2 ${isClothes ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200 hover:shadow-indigo-300' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200 hover:shadow-emerald-300'}`}>
                 Request Pickup
               </button>
             )}
@@ -607,13 +613,13 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
 
             {user?.role === UserRole.VOLUNTEER && posting.status === FoodStatus.REQUESTED && !posting.volunteerId && (
                !isConfirmingStart ? (
-                  <button onClick={() => setIsConfirmingStart(true)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 transition-all hover:-translate-y-0.5">
+                  <button onClick={() => setIsConfirmingStart(true)} className={`w-full text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-lg transition-all hover:-translate-y-0.5 ${isClothes ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'}`}>
                     Start Delivery Mission
                   </button>
                ) : (
                   <div className="flex gap-2 animate-fade-in-up">
                       <button onClick={() => setIsConfirmingStart(false)} className="flex-1 py-3 bg-slate-100 text-slate-500 font-bold rounded-xl text-xs uppercase tracking-wider hover:bg-slate-200 transition-colors">Cancel</button>
-                      <button onClick={confirmStartVolunteering} className="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-xl text-xs uppercase tracking-wider hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-200">Confirm</button>
+                      <button onClick={confirmStartVolunteering} className={`flex-1 py-3 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-colors shadow-lg ${isClothes ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'}`}>Confirm</button>
                   </div>
                )
             )}

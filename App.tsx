@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { User, UserRole, FoodPosting, FoodStatus, Notification, Rating } from './types';
+import { User, UserRole, FoodPosting, FoodStatus, Notification, Rating, DonationType } from './types';
 import { storage, calculateDistance } from './services/storageService';
-import { analyzeFoodSafetyImage, editImage, transcribeAudio } from './services/geminiService';
+import { analyzeFoodSafetyImage, analyzeClothesImage, editImage, transcribeAudio } from './services/geminiService';
 import { reverseGeocodeGoogle } from './services/mapLoader';
 import { auth, onAuthStateChanged, signOut } from './services/firebaseConfig';
 import Layout from './components/Layout';
@@ -34,8 +34,9 @@ export default function App() {
   // Pending Verification State for Donors
   const [pendingVerificationPosting, setPendingVerificationPosting] = useState<FoodPosting | null>(null);
 
-  // Post Food Modal State
+  // Post Donation Modal State
   const [isAddingFood, setIsAddingFood] = useState(false);
+  const [donationType, setDonationType] = useState<DonationType>('FOOD');
   const [foodName, setFoodName] = useState('');
   const [foodDescription, setFoodDescription] = useState('');
   const [quantityNum, setQuantityNum] = useState('');
@@ -73,6 +74,10 @@ export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Tags Options
+  const foodTagsOptions = ['Veg', 'Non-Veg', 'Home-cooked', 'Packaged', 'No Dairy', 'No Nuts'];
+  const clothesTagsOptions = ['Men', 'Women', 'Kids', 'Unisex', 'Winter', 'Summer', 'Bedding', 'Mixed'];
 
   // Auth Persistence
   useEffect(() => {
@@ -198,6 +203,9 @@ export default function App() {
             setFoodLat(userLocation?.lat);
             setFoodLng(userLocation?.lng);
         }
+        // Default to Food, but allow user to change
+        setDonationType('FOOD');
+        setUnit('meals');
         setSafetyVerdict(undefined);
         setSelectedTags([]);
         setImageEditPrompt('');
@@ -217,6 +225,11 @@ export default function App() {
         if (activeTab === 'opportunities') {
             let opportunities = filtered.filter(p => (p.status === FoodStatus.AVAILABLE || (p.status === FoodStatus.REQUESTED && !p.volunteerId)));
             
+            // Apply Type Filter
+            if (user.donationTypeFilter && user.donationTypeFilter !== 'ALL') {
+                 opportunities = opportunities.filter(p => (p.donationType || 'FOOD') === user.donationTypeFilter);
+            }
+
             // Apply Search Radius Filter
             const radius = user.searchRadius || 10;
             if (userLocation) {
@@ -236,6 +249,11 @@ export default function App() {
         if (activeTab === 'browse') {
             let available = filtered.filter(p => p.status === FoodStatus.AVAILABLE);
             
+            // Apply Type Filter
+            if (user.donationTypeFilter && user.donationTypeFilter !== 'ALL') {
+                 available = available.filter(p => (p.donationType || 'FOOD') === user.donationTypeFilter);
+            }
+
             // Apply Search Radius Filter
             const radius = user.searchRadius || 10;
             if (userLocation) {
@@ -291,19 +309,7 @@ export default function App() {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const base64 = canvas.toDataURL('image/jpeg', 0.8);
             stopCamera();
-            setFoodImage(base64);
-            setIsAnalyzing(true);
-            setSafetyVerdict(undefined);
-            const analysis = await analyzeFoodSafetyImage(base64);
-            setIsAnalyzing(false);
-            setSafetyVerdict({ isSafe: analysis.isSafe, reasoning: analysis.reasoning });
-            if (!analysis.isSafe) {
-                const keep = window.confirm(`Safety Warning: ${analysis.reasoning}.\n\nDo you want to keep this photo anyway?`);
-                if (!keep) {
-                    setFoodImage(null);
-                    setSafetyVerdict(undefined);
-                }
-            }
+            processImage(base64);
         }
     }
   };
@@ -323,26 +329,42 @@ export default function App() {
             const ctx = canvas.getContext('2d');
             ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
             const base64 = canvas.toDataURL('image/jpeg', 0.8);
-
-            setFoodImage(base64);
-            setIsAnalyzing(true);
-            setSafetyVerdict(undefined);
-            const analysis = await analyzeFoodSafetyImage(base64);
-            setIsAnalyzing(false);
-            setSafetyVerdict({ isSafe: analysis.isSafe, reasoning: analysis.reasoning });
-            if (!analysis.isSafe) {
-                const keep = window.confirm(`Safety Warning: ${analysis.reasoning}.\n\nDo you want to keep this photo anyway?`);
-                if (!keep) {
-                    setFoodImage(null);
-                    setSafetyVerdict(undefined);
-                    if(fileInputRef.current) fileInputRef.current.value = '';
-                }
-            }
+            processImage(base64);
         };
         img.src = reader.result as string;
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const processImage = async (base64: string) => {
+      setFoodImage(base64);
+      setIsAnalyzing(true);
+      setSafetyVerdict(undefined);
+      
+      let analysis;
+      if (donationType === 'CLOTHES') {
+          analysis = await analyzeClothesImage(base64);
+      } else {
+          analysis = await analyzeFoodSafetyImage(base64);
+      }
+      
+      setIsAnalyzing(false);
+      setSafetyVerdict({ isSafe: analysis.isSafe, reasoning: analysis.reasoning });
+      
+      // Auto-fill title if empty and analysis provided a guess
+      if (!foodName && analysis.detectedFoodName && analysis.detectedFoodName !== "Food Donation" && analysis.detectedFoodName !== "Clothes Donation") {
+          setFoodName(analysis.detectedFoodName);
+      }
+
+      if (!analysis.isSafe) {
+          const keep = window.confirm(`Safety Warning: ${analysis.reasoning}.\n\nDo you want to keep this photo anyway?`);
+          if (!keep) {
+              setFoodImage(null);
+              setSafetyVerdict(undefined);
+              if(fileInputRef.current) fileInputRef.current.value = '';
+          }
+      }
   };
 
   const handleImageEdit = async () => {
@@ -478,7 +500,7 @@ export default function App() {
   const handleInitiatePayment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    if (!foodImage) { alert("Please take a photo of the food."); return; }
+    if (!foodImage) { alert("Please take a photo of the item."); return; }
     if (!foodLine1 || !foodLine2 || !foodPincode) { alert("Please enter a valid pickup address."); return; }
     
     setIsProcessingPayment(true);
@@ -491,6 +513,7 @@ export default function App() {
     
     const newPost: FoodPosting = {
         id: Math.random().toString(36).substr(2, 9), 
+        donationType: donationType, // Save type
         donorId: user.id, 
         donorName: user?.name || 'Unknown Donor', 
         donorOrg: user.orgName,
@@ -521,12 +544,11 @@ export default function App() {
     setFoodName(''); setFoodDescription(''); setQuantityNum(''); setFoodImage(null); setSafetyVerdict(undefined);
     setExpiryDate(''); setFoodLine1(''); setFoodLine2(''); setFoodLandmark(''); setFoodPincode(''); setSelectedTags([]);
     setFoodLat(undefined); setFoodLng(undefined);
+    // Note: donationType is kept as is for consecutive same-type donations
     
     setShowPaymentModal(false);
     setIsProcessingPayment(false);
     setIsAddingFood(false);
-    // Success alert handled visually by the modal, but a final toast is good practice
-    // For now, the modal's internal success state provides feedback.
   };
 
   const handleDonorApprove = () => {
@@ -594,16 +616,16 @@ export default function App() {
                     Hello, <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500">{user.name?.split(' ')[0]}</span>.
                 </h2>
                 <p className="text-slate-500 font-medium text-lg">
-                    {user.role === UserRole.DONOR && "Let's share some food today! 🥘"}
+                    {user.role === UserRole.DONOR && "What are we giving today? 🎁"}
                     {user.role === UserRole.VOLUNTEER && "Ready to be a hero? 🦸"}
-                    {user.role === UserRole.REQUESTER && "Find fresh meals nearby. 🏠"}
+                    {user.role === UserRole.REQUESTER && "Find help nearby. 🏠"}
                 </p>
             </div>
             <div className="flex flex-wrap md:flex-nowrap gap-3 w-full md:w-auto">
                 {user.role === UserRole.DONOR && (
                     <>
                         {renderStatsCard("Impact Score", user.impactScore || 0, "✨", "bg-gradient-to-br from-amber-50 to-orange-50 text-orange-900")}
-                        {renderStatsCard("Total Donations", postings.filter(p => p.donorId === user.id).length, "🍱", "bg-gradient-to-br from-emerald-50 to-teal-50 text-emerald-900")}
+                        {renderStatsCard("Donations", postings.filter(p => p.donorId === user.id).length, "📦", "bg-gradient-to-br from-emerald-50 to-teal-50 text-emerald-900")}
                     </>
                 )}
                 {user.role === UserRole.VOLUNTEER && (
@@ -638,7 +660,7 @@ export default function App() {
                 )}
                 {user.role === UserRole.VOLUNTEER && (
                     <>
-                    <button onClick={() => setActiveTab('opportunities')} className={tabClass(activeTab === 'opportunities')}>Find Food</button>
+                    <button onClick={() => setActiveTab('opportunities')} className={tabClass(activeTab === 'opportunities')}>Find Requests</button>
                     <button onClick={() => setActiveTab('mytasks')} className={tabClass(activeTab === 'mytasks')}>My Tasks</button>
                     <button onClick={() => setActiveTab('history')} className={tabClass(activeTab === 'history')}>History</button>
                     </>
@@ -674,11 +696,11 @@ export default function App() {
                 </div>
                 <h3 className="text-2xl font-black text-slate-800 mb-3 tracking-tight">Nothing to see here... yet!</h3>
                 <p className="text-slate-500 font-medium max-w-md mx-auto leading-relaxed">
-                    {user?.role === UserRole.DONOR ? "Your active donations will appear here. Start by posting some food!" : "No active items found in this category. Check back soon!"}
+                    {user?.role === UserRole.DONOR ? "Your active donations will appear here. Start by posting some food or clothes!" : "No active items found in this category. Check back soon!"}
                 </p>
                 {user?.role === UserRole.DONOR && activeTab === 'active' && (
                         <button onClick={() => setIsAddingFood(true)} className="mt-8 px-8 py-4 bg-emerald-600 text-white font-black rounded-2xl uppercase text-xs tracking-widest shadow-xl shadow-emerald-200/50 hover:bg-emerald-700 hover:scale-110 transition-all">
-                            Donate Food Now
+                            Donate Now
                         </button>
                 )}
             </div>
@@ -753,16 +775,16 @@ export default function App() {
             </button>
         )}
 
-        {/* Post Food Modal */}
+        {/* Post Donation Modal */}
         {isAddingFood && (
             <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-                <div className="bg-white rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl relative animate-fade-in-up my-auto">
+                <div className={`bg-white rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl relative animate-fade-in-up my-auto border-t-8 ${donationType === 'CLOTHES' ? 'border-indigo-500' : 'border-emerald-500'}`}>
                     <div className="bg-white/80 backdrop-blur-xl p-6 flex justify-between items-center sticky top-0 z-50 border-b border-slate-100">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${donationType === 'CLOTHES' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                {donationType === 'CLOTHES' ? '👕' : '🍱'}
                             </div>
-                            <h3 className="font-black text-lg uppercase tracking-wider text-slate-800">Donate Food</h3>
+                            <h3 className="font-black text-lg uppercase tracking-wider text-slate-800">New Donation</h3>
                         </div>
                         <button onClick={() => setIsAddingFood(false)} className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-colors">
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -770,19 +792,40 @@ export default function App() {
                     </div>
                     
                     <form onSubmit={handleInitiatePayment} className="p-8 space-y-8 max-h-[80vh] overflow-y-auto custom-scrollbar">
+                        
+                        {/* Donation Type Toggle */}
+                        <div className="bg-slate-50 p-1.5 rounded-2xl flex border border-slate-100">
+                            <button
+                                type="button"
+                                onClick={() => { setDonationType('FOOD'); setUnit('meals'); setSelectedTags([]); }}
+                                className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${donationType === 'FOOD' ? 'bg-white text-emerald-700 shadow-md ring-1 ring-emerald-100' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                🍱 Food
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setDonationType('CLOTHES'); setUnit('items'); setSelectedTags([]); }}
+                                className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${donationType === 'CLOTHES' ? 'bg-white text-indigo-700 shadow-md ring-1 ring-indigo-100' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                👕 Clothes
+                            </button>
+                        </div>
+
                         {/* Image Capture Section */}
                         <div className="space-y-4">
-                            <label className="text-xs font-black uppercase text-slate-400 tracking-widest block">Food Photo & Safety Check</label>
+                            <label className="text-xs font-black uppercase text-slate-400 tracking-widest block">
+                                {donationType === 'CLOTHES' ? 'Clothes Quality Check' : 'Food Safety Check'}
+                            </label>
                             
                             {!isCameraOpen && !foodImage && (
                                 <div className="grid grid-cols-2 gap-4">
-                                    <button type="button" onClick={startCamera} className="h-40 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center text-slate-400 hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-600 transition-all group">
+                                    <button type="button" onClick={startCamera} className={`h-40 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center text-slate-400 transition-all group ${donationType === 'CLOTHES' ? 'hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600' : 'hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-600'}`}>
                                         <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm mb-3 group-hover:scale-110 transition-transform">
                                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                                         </div>
                                         <span className="text-xs font-bold uppercase tracking-wide">Take Photo</span>
                                     </button>
-                                    <button type="button" onClick={() => fileInputRef.current?.click()} className="h-40 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center text-slate-400 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-all group">
+                                    <button type="button" onClick={() => fileInputRef.current?.click()} className={`h-40 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center text-slate-400 transition-all group ${donationType === 'CLOTHES' ? 'hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600' : 'hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-600'}`}>
                                         <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm mb-3 group-hover:scale-110 transition-transform">
                                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                                         </div>
@@ -807,7 +850,7 @@ export default function App() {
 
                             {foodImage && (
                                 <div className="relative rounded-3xl overflow-hidden bg-slate-100 border border-slate-200 group">
-                                    <img src={foodImage} alt="Food" className="w-full h-64 object-cover" />
+                                    <img src={foodImage} alt="Donation" className="w-full h-64 object-cover" />
                                     
                                     <div className="absolute top-4 right-4 flex gap-2">
                                         {/* Edit Button */}
@@ -828,7 +871,7 @@ export default function App() {
                                                     type="text" 
                                                     value={imageEditPrompt} 
                                                     onChange={(e) => setImageEditPrompt(e.target.value)} 
-                                                    placeholder="E.g., 'Add a retro filter'"
+                                                    placeholder="E.g., 'Make it brighter'"
                                                     className="flex-1 px-3 py-2 rounded-xl text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                                 />
                                                 <button 
@@ -849,7 +892,7 @@ export default function App() {
                                         {isAnalyzing ? (
                                             <div className="flex items-center gap-3 text-slate-600">
                                                 <svg className="animate-spin h-5 w-5 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                                <span className="text-xs font-bold uppercase tracking-wide">Analyzing Food Safety...</span>
+                                                <span className="text-xs font-bold uppercase tracking-wide">Analyzing with Gemini AI...</span>
                                             </div>
                                         ) : safetyVerdict ? (
                                             <div className={`flex items-start gap-3 ${safetyVerdict.isSafe ? 'text-emerald-800' : 'text-rose-800'}`}>
@@ -861,7 +904,7 @@ export default function App() {
                                                     )}
                                                 </div>
                                                 <div>
-                                                    <p className="text-xs font-black uppercase tracking-wide mb-1">{safetyVerdict.isSafe ? 'Looks Good!' : 'Safety Warning'}</p>
+                                                    <p className="text-xs font-black uppercase tracking-wide mb-1">{safetyVerdict.isSafe ? 'Looks Good!' : 'Warning'}</p>
                                                     <p className="text-sm font-medium leading-snug">{safetyVerdict.reasoning}</p>
                                                 </div>
                                             </div>
@@ -874,11 +917,11 @@ export default function App() {
 
                         {/* Details Inputs */}
                         <div className="space-y-4">
-                            <label className="text-xs font-black uppercase text-slate-400 tracking-widest block">Food Details</label>
-                            <input type="text" placeholder="What kind of food is it?" className="w-full px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={foodName} onChange={e => setFoodName(e.target.value)} required />
+                            <label className="text-xs font-black uppercase text-slate-400 tracking-widest block">Item Details</label>
+                            <input type="text" placeholder={donationType === 'CLOTHES' ? "e.g. Winter Jackets" : "e.g. Rice & Curry"} className="w-full px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={foodName} onChange={e => setFoodName(e.target.value)} required />
                             
                             <div className="relative">
-                                <textarea placeholder="Description (ingredients, allergens, etc.)" className="w-full px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all h-28 resize-none" value={foodDescription} onChange={e => setFoodDescription(e.target.value)} />
+                                <textarea placeholder="Description (size, condition, ingredients...)" className="w-full px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all h-28 resize-none" value={foodDescription} onChange={e => setFoodDescription(e.target.value)} />
                                 <button 
                                     type="button" 
                                     onClick={isRecording ? stopRecording : startRecording}
@@ -890,21 +933,32 @@ export default function App() {
                             </div>
                             
                             <div className="flex gap-4">
-                                <input type="number" placeholder="Quantity" className="flex-1 px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={quantityNum} onChange={e => setQuantityNum(e.target.value)} required />
+                                <input type="number" placeholder="Qty" className="flex-1 px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={quantityNum} onChange={e => setQuantityNum(e.target.value)} required />
                                 <select className="w-32 px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={unit} onChange={e => setUnit(e.target.value)}>
-                                    <option value="meals">Meals</option>
-                                    <option value="kg">kg</option>
-                                    <option value="items">Items</option>
+                                    {donationType === 'FOOD' ? (
+                                        <>
+                                            <option value="meals">Meals</option>
+                                            <option value="kg">kg</option>
+                                            <option value="items">Items</option>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <option value="items">Items</option>
+                                            <option value="bags">Bags</option>
+                                            <option value="boxes">Boxes</option>
+                                            <option value="sets">Sets</option>
+                                        </>
+                                    )}
                                 </select>
                             </div>
                             
                             <div className="space-y-2">
-                                <p className="text-xs font-bold text-slate-500 uppercase ml-1">Expires In</p>
+                                <p className="text-xs font-bold text-slate-500 uppercase ml-1">{donationType === 'CLOTHES' ? 'Pickup Deadline' : 'Expires In'}</p>
                                 <input type="datetime-local" className="w-full px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} required />
                             </div>
 
                             <div className="flex flex-wrap gap-2 pt-2">
-                                {['Veg', 'Non-Veg', 'Home-cooked', 'Packaged', 'No Dairy', 'No Nuts'].map(tag => (
+                                {(donationType === 'CLOTHES' ? clothesTagsOptions : foodTagsOptions).map(tag => (
                                     <button 
                                         key={tag}
                                         type="button"
@@ -967,7 +1021,7 @@ export default function App() {
                         <button 
                             type="submit" 
                             disabled={isProcessingPayment}
-                            className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs shadow-xl shadow-slate-200 transform hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-3"
+                            className={`w-full text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs shadow-xl shadow-slate-200 transform hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-3 ${donationType === 'CLOTHES' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-900 hover:bg-slate-800'}`}
                         >
                             {isProcessingPayment ? (
                                 <>

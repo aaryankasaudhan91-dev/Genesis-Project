@@ -54,7 +54,7 @@ export const getFoodSafetyTips = async (foodName: string): Promise<string> => {
   }
 };
 
-// --- 2. Context-Aware Visual Analysis ---
+// --- 2. Context-Aware Visual Analysis (FOOD) ---
 export const analyzeFoodSafetyImage = async (base64Data: string): Promise<ImageAnalysisResult> => {
   const prompt = `
     You are an AI Food Safety Auditor for a food rescue app.
@@ -98,6 +98,57 @@ export const analyzeFoodSafetyImage = async (base64Data: string): Promise<ImageA
           isSafe: true,
           reasoning: "AI analysis unavailable. Please perform a manual sensory check (Smell, Sight).",
           detectedFoodName: "Food Donation",
+          confidence: 0.5
+      };
+  }
+};
+
+// --- 2b. Context-Aware Visual Analysis (CLOTHES) ---
+export const analyzeClothesImage = async (base64Data: string): Promise<ImageAnalysisResult> => {
+  const prompt = `
+    You are an AI Quality Inspector for a clothes donation charity.
+    Analyze this image of clothes to determine if they appear clean, usable, and appropriate for donation.
+    Check for visible stains, tears, or extreme wear.
+    
+    Return a VALID JSON object with no markdown formatting:
+    {
+      "detectedFoodName": "A generic guess like 'Men's Shirt' or 'Pile of Clothes'",
+      "isSafe": boolean (true/false), 
+      "reasoning": "A 2-sentence quality check (e.g. 'Clothes appear clean and folded. No visible damage.')",
+      "confidence": number (0.0 to 1.0)
+    }
+    Note: 'isSafe' here means 'Suitable for Donation'.
+  `;
+
+  try {
+      const response = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: {
+              parts: [
+                  { inlineData: { mimeType: 'image/jpeg', data: getBase64(base64Data) } },
+                  { text: prompt }
+              ]
+          },
+          config: {
+              responseMimeType: 'application/json'
+          }
+      });
+
+      const text = response.text || "{}";
+      const jsonResult = JSON.parse(text);
+      
+      return {
+          isSafe: typeof jsonResult.isSafe === 'boolean' ? jsonResult.isSafe : true,
+          reasoning: jsonResult.reasoning || "Please physically verify clothes are clean and intact.",
+          detectedFoodName: jsonResult.detectedFoodName || "Clothes Donation",
+          confidence: jsonResult.confidence || 0.85
+      };
+  } catch (error) {
+      console.error("Gemini Clothes Analysis Error:", error);
+      return {
+          isSafe: true,
+          reasoning: "AI analysis unavailable. Please ensure clothes are washed and usable.",
+          detectedFoodName: "Clothes Donation",
           confidence: 0.5
       };
   }
@@ -244,8 +295,8 @@ export const askWithThinking = async (query: string, userContext?: string): Prom
 // --- 3. Personalized Pickup Verification ---
 export const verifyPickupImage = async (base64Data: string): Promise<{ isValid: boolean; feedback: string }> => {
   const prompt = `
-    You are the system confirming a food pickup by a volunteer.
-    Analyze the image to ensure it looks like a food pickup (containers, bags, or handover).
+    You are the system confirming a food/clothes pickup by a volunteer.
+    Analyze the image to ensure it looks like a donation pickup (containers, bags, or handover).
     Generate a short, encouraging, professional confirmation message (max 1 sentence).
     Return JSON: { "isValid": true, "feedback": "message string" }
   `;
@@ -270,7 +321,7 @@ export const verifyPickupImage = async (base64Data: string): Promise<{ isValid: 
 // --- 4. Personalized Delivery Verification ---
 export const verifyDeliveryImage = async (base64Data: string): Promise<{ isValid: boolean; feedback: string }> => {
   const prompt = `
-    You are the system confirming a food delivery to an orphanage.
+    You are the system confirming a food/clothes delivery to an orphanage/requester.
     Analyze the image to ensure it looks like a successful delivery.
     Generate a warm, grateful confirmation message (max 1 sentence).
     Return JSON: { "isValid": true, "feedback": "message string" }

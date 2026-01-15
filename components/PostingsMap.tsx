@@ -81,12 +81,20 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
               bounds.extend([userLocation.lat, userLocation.lng]);
           }
 
-          // Food Postings
+          // Food & Clothes Postings
           postings.forEach(post => {
               if (post.location?.lat && post.location?.lng) {
+                  const isClothes = post.donationType === 'CLOTHES';
                   const isUrgent = new Date(post.expiryDate).getTime() - Date.now() < 12 * 60 * 60 * 1000;
-                  const color = isUrgent ? '#f43f5e' : '#10b981';
-                  const emoji = post.foodCategory === 'Veg' ? '🥗' : '🍱';
+                  
+                  let color, emoji;
+                  if (isClothes) {
+                      color = '#6366f1'; // Indigo for clothes
+                      emoji = '👕';
+                  } else {
+                      color = isUrgent ? '#f43f5e' : '#10b981'; // Rose/Emerald for food
+                      emoji = post.foodCategory === 'Veg' ? '🥗' : '🍱';
+                  }
 
                   const iconHtml = `
                     <div style="
@@ -123,7 +131,7 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
                         ${post.imageUrl ? `<div style="height: 120px; width: 100%; margin-bottom: 8px; border-radius: 8px; overflow: hidden;"><img src="${post.imageUrl}" style="width: 100%; height: 100%; object-fit: cover;" /></div>` : ''}
                         <h3 style="font-weight: 800; font-size: 14px; margin: 0; color: #0f172a;">${post.foodName}</h3>
                         <p style="font-size: 11px; color: #64748b; margin: 4px 0 8px;">${post.quantity} • ${post.donorOrg || post.donorName}</p>
-                        <button id="view-btn-${post.id}" style="width: 100%; background: #059669; color: white; border: none; padding: 8px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; text-transform: uppercase;">View Details</button>
+                        <button id="view-btn-${post.id}" style="width: 100%; background: ${isClothes ? '#4f46e5' : '#059669'}; color: white; border: none; padding: 8px; border-radius: 6px; font-weight: 700; font-size: 11px; cursor: pointer; text-transform: uppercase;">View Details</button>
                     </div>
                   `;
                   

@@ -1,5 +1,4 @@
 
-
 export enum UserRole {
   DONOR = 'DONOR',
   VOLUNTEER = 'VOLUNTEER',
@@ -47,6 +46,7 @@ export interface User {
   profilePictureUrl?: string;
   notificationPreferences?: NotificationPreferences;
   searchRadius?: number;
+  donationTypeFilter?: 'ALL' | 'FOOD' | 'CLOTHES';
 }
 
 export interface ChatMessage {
@@ -67,8 +67,11 @@ export interface Rating {
   createdAt: number;
 }
 
+export type DonationType = 'FOOD' | 'CLOTHES';
+
 export interface FoodPosting {
   id: string;
+  donationType?: DonationType; // Defaults to FOOD if undefined
   donorId: string;
   donorName: string;
   donorOrg?: string;
