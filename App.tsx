@@ -28,8 +28,8 @@ export default function App() {
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<string>('default');
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
-  const [selectedPostingId, setSelectedPostingId] = useState<string | null>(null); 
-  const [activeChatPostingId, setActiveChatPostingId] = useState<string | null>(null); 
+  const [selectedPostingId, setSelectedPostingId] = useState<string | null>(null);
+  const [activeChatPostingId, setActiveChatPostingId] = useState<string | null>(null);
 
   // Pending Verification State for Donors
   const [pendingVerificationPosting, setPendingVerificationPosting] = useState<FoodPosting | null>(null);
@@ -47,7 +47,7 @@ export default function App() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  
+
   // Image Editing State
   const [isEditingImage, setIsEditingImage] = useState(false);
   const [imageEditPrompt, setImageEditPrompt] = useState('');
@@ -67,7 +67,7 @@ export default function App() {
   const [foodLat, setFoodLat] = useState<number | undefined>(undefined);
   const [foodLng, setFoodLng] = useState<number | undefined>(undefined);
   const [isFoodAutoDetecting, setIsFoodAutoDetecting] = useState(false);
-  
+
   // Camera State
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -123,7 +123,7 @@ export default function App() {
     const interval = setInterval(() => {
         setPostings(storage.getPostings());
         if (user) setNotifications(storage.getNotifications(user.id));
-    }, 2000); 
+    }, 2000);
 
     let watchId: number;
     if (user?.role === UserRole.VOLUNTEER) {
@@ -131,10 +131,10 @@ export default function App() {
             (pos) => {
                 const { latitude, longitude } = pos.coords;
                 setUserLocation({ lat: latitude, lng: longitude });
-                const activePostings = storage.getPostings().filter(p => 
-                    (p.status === FoodStatus.IN_TRANSIT || 
-                     p.status === FoodStatus.PICKUP_VERIFICATION_PENDING || 
-                     p.status === FoodStatus.DELIVERY_VERIFICATION_PENDING) && 
+                const activePostings = storage.getPostings().filter(p =>
+                    (p.status === FoodStatus.IN_TRANSIT ||
+                     p.status === FoodStatus.PICKUP_VERIFICATION_PENDING ||
+                     p.status === FoodStatus.DELIVERY_VERIFICATION_PENDING) &&
                     p.volunteerId === user.id
                 );
                 if (activePostings.length > 0) {
@@ -163,8 +163,8 @@ export default function App() {
       if (!user || user.role !== UserRole.DONOR) return;
       const checkPendingVerifications = () => {
           const currentPostings = storage.getPostings();
-          const pending = currentPostings.find(p => 
-              p.donorId === user.id && 
+          const pending = currentPostings.find(p =>
+              p.donorId === user.id &&
               (p.status === FoodStatus.PICKUP_VERIFICATION_PENDING || p.status === FoodStatus.DELIVERY_VERIFICATION_PENDING)
           );
           if (pending) {
@@ -224,7 +224,7 @@ export default function App() {
     } else if (user.role === UserRole.VOLUNTEER) {
         if (activeTab === 'opportunities') {
             let opportunities = filtered.filter(p => (p.status === FoodStatus.AVAILABLE || (p.status === FoodStatus.REQUESTED && !p.volunteerId)));
-            
+
             // Apply Type Filter
             if (user.donationTypeFilter && user.donationTypeFilter !== 'ALL') {
                  opportunities = opportunities.filter(p => (p.donationType || 'FOOD') === user.donationTypeFilter);
@@ -248,7 +248,7 @@ export default function App() {
     } else if (user.role === UserRole.REQUESTER) {
         if (activeTab === 'browse') {
             let available = filtered.filter(p => p.status === FoodStatus.AVAILABLE);
-            
+
             // Apply Type Filter
             if (user.donationTypeFilter && user.donationTypeFilter !== 'ALL') {
                  available = available.filter(p => (p.donationType || 'FOOD') === user.donationTypeFilter);
@@ -262,7 +262,7 @@ export default function App() {
                         const dist = calculateDistance(userLocation.lat, userLocation.lng, p.location.lat, p.location.lng);
                         return dist <= radius;
                     }
-                    return true; 
+                    return true;
                 });
             }
             return available;
@@ -303,7 +303,7 @@ export default function App() {
         const scale = video.videoWidth > MAX_WIDTH ? MAX_WIDTH / video.videoWidth : 1;
         canvas.width = video.videoWidth * scale;
         canvas.height = video.videoHeight * scale;
-        
+
         const ctx = canvas.getContext('2d');
         if (ctx) {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -341,17 +341,17 @@ export default function App() {
       setFoodImage(base64);
       setIsAnalyzing(true);
       setSafetyVerdict(undefined);
-      
+
       let analysis;
       if (donationType === 'CLOTHES') {
           analysis = await analyzeClothesImage(base64);
       } else {
           analysis = await analyzeFoodSafetyImage(base64);
       }
-      
+
       setIsAnalyzing(false);
       setSafetyVerdict({ isSafe: analysis.isSafe, reasoning: analysis.reasoning });
-      
+
       // Auto-fill title if empty and analysis provided a guess
       if (!foodName && analysis.detectedFoodName && analysis.detectedFoodName !== "Food Donation" && analysis.detectedFoodName !== "Clothes Donation") {
           setFoodName(analysis.detectedFoodName);
@@ -372,7 +372,7 @@ export default function App() {
       setIsImageProcessing(true);
       const newImage = await editImage(foodImage, imageEditPrompt);
       setIsImageProcessing(false);
-      
+
       if (newImage) {
           setFoodImage(newImage);
           setIsEditingImage(false);
@@ -389,7 +389,7 @@ export default function App() {
           // Determine a supported mime type (prefer webm, fallback to mp4 for Safari)
           const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
           setRecordingMimeType(mimeType);
-          
+
           const mediaRecorder = new MediaRecorder(stream, { mimeType });
           mediaRecorderRef.current = mediaRecorder;
           audioChunksRef.current = [];
@@ -502,7 +502,7 @@ export default function App() {
     if (!user) return;
     if (!foodImage) { alert("Please take a photo of the item."); return; }
     if (!foodLine1 || !foodLine2 || !foodPincode) { alert("Please enter a valid pickup address."); return; }
-    
+
     setIsProcessingPayment(true);
     // Show Payment Modal instead of direct processing
     setShowPaymentModal(true);
@@ -510,42 +510,42 @@ export default function App() {
 
   const handlePaymentSuccess = () => {
     if (!user) return;
-    
+
     const newPost: FoodPosting = {
-        id: Math.random().toString(36).substr(2, 9), 
+        id: Math.random().toString(36).substr(2, 9),
         donationType: donationType, // Save type
-        donorId: user.id, 
-        donorName: user?.name || 'Unknown Donor', 
+        donorId: user.id,
+        donorName: user?.name || 'Unknown Donor',
         donorOrg: user.orgName,
-        foodName, 
+        foodName,
         description: foodDescription,
         quantity: `${quantityNum} ${unit}`,
-        location: { 
-            line1: foodLine1, 
-            line2: foodLine2, 
-            landmark: foodLandmark, 
-            pincode: foodPincode, 
-            lat: foodLat || userLocation?.lat, 
-            lng: foodLng || userLocation?.lng 
+        location: {
+            line1: foodLine1,
+            line2: foodLine2,
+            landmark: foodLandmark,
+            pincode: foodPincode,
+            lat: foodLat || userLocation?.lat,
+            lng: foodLng || userLocation?.lng
         },
-        expiryDate, 
-        status: FoodStatus.AVAILABLE, 
-        imageUrl: foodImage, 
+        expiryDate,
+        status: FoodStatus.AVAILABLE,
+        imageUrl: foodImage,
         safetyVerdict,
         foodTags: selectedTags,
         createdAt: Date.now(),
         platformFeePaid: true
     };
-    
+
     storage.savePosting(newPost);
     setPostings(storage.getPostings());
-    
+
     // Reset Form
     setFoodName(''); setFoodDescription(''); setQuantityNum(''); setFoodImage(null); setSafetyVerdict(undefined);
     setExpiryDate(''); setFoodLine1(''); setFoodLine2(''); setFoodLandmark(''); setFoodPincode(''); setSelectedTags([]);
     setFoodLat(undefined); setFoodLng(undefined);
     // Note: donationType is kept as is for consecutive same-type donations
-    
+
     setShowPaymentModal(false);
     setIsProcessingPayment(false);
     setIsAddingFood(false);
@@ -569,7 +569,7 @@ export default function App() {
               storage.updatePosting(pendingVerificationPosting.id, {
                   status: FoodStatus.REQUESTED,
                   pickupVerificationImageUrl: undefined,
-                  volunteerId: undefined, 
+                  volunteerId: undefined,
                   volunteerName: undefined
               });
               alert("Pickup Verification Rejected. The volunteer has been notified.");
@@ -648,7 +648,7 @@ export default function App() {
   const renderTabs = () => {
     if (!user) return null;
     const tabClass = (active: boolean) => `px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap ${active ? 'bg-slate-900 text-white shadow-lg shadow-slate-200' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`;
-    
+
     return (
         <div className="flex items-center justify-between mb-6">
             <div className="bg-white p-1.5 rounded-full border border-slate-200 shadow-sm inline-flex">
@@ -710,8 +710,8 @@ export default function App() {
       if (viewMode === 'map' && ((user?.role === UserRole.VOLUNTEER && activeTab === 'opportunities') || (user?.role === UserRole.REQUESTER && activeTab === 'browse'))) {
           return (
               <div className="h-[600px] w-full rounded-[2.5rem] overflow-hidden shadow-lg border border-slate-200">
-                  <PostingsMap 
-                    postings={filteredPostings} 
+                  <PostingsMap
+                    postings={filteredPostings}
                     userLocation={userLocation}
                     onPostingSelect={(id) => { setSelectedPostingId(id); }}
                   />
@@ -723,9 +723,9 @@ export default function App() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredPostings.map((post, idx) => (
                 <div key={post.id} className="animate-fade-in-up" style={{ animationDelay: `${idx * 100}ms` }}>
-                    <FoodCard 
-                        posting={post} 
-                        user={user!} 
+                    <FoodCard
+                        posting={post}
+                        user={user!}
                         onUpdate={(id, updates) => { storage.updatePosting(id, updates); handleRefresh(); }}
                         onDelete={handleDeletePosting}
                         currentLocation={userLocation}
@@ -748,9 +748,9 @@ export default function App() {
   if (view === 'HELP' && user) return <Layout user={user} onLogout={() => { if (auth) signOut(auth); setUser(null); setView('LOGIN'); }} onProfileClick={() => setView('PROFILE')} onLogoClick={() => setView('DASHBOARD')} onContactClick={() => setView('CONTACT')} onHelpClick={() => {}} onSettingsClick={() => setView('SETTINGS')} notifications={notifications}><HelpFAQ onBack={() => setView('DASHBOARD')} onContact={() => setView('CONTACT')} /></Layout>;
 
   return (
-    <Layout 
-        user={user} 
-        onLogout={() => { if (auth) signOut(auth); setUser(null); setView('LOGIN'); }} 
+    <Layout
+        user={user}
+        onLogout={() => { if (auth) signOut(auth); setUser(null); setView('LOGIN'); }}
         onProfileClick={() => setView('PROFILE')}
         onLogoClick={() => setView('DASHBOARD')}
         onContactClick={() => setView('CONTACT')}
@@ -767,7 +767,7 @@ export default function App() {
         )}
 
         {user?.role === UserRole.DONOR && !isAddingFood && (
-            <button 
+            <button
                 onClick={() => setIsAddingFood(true)}
                 className="fixed bottom-10 right-10 w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-full shadow-[0_20px_40px_-10px_rgba(16,185,129,0.5)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 z-40 group hover:rotate-90 border-4 border-white"
             >
@@ -790,9 +790,9 @@ export default function App() {
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                     </div>
-                    
+
                     <form onSubmit={handleInitiatePayment} className="p-8 space-y-8 max-h-[80vh] overflow-y-auto custom-scrollbar">
-                        
+
                         {/* Donation Type Toggle */}
                         <div className="bg-slate-50 p-1.5 rounded-2xl flex border border-slate-100">
                             <button
@@ -816,7 +816,7 @@ export default function App() {
                             <label className="text-xs font-black uppercase text-slate-400 tracking-widest block">
                                 {donationType === 'CLOTHES' ? 'Clothes Quality Check' : 'Food Safety Check'}
                             </label>
-                            
+
                             {!isCameraOpen && !foodImage && (
                                 <div className="grid grid-cols-2 gap-4">
                                     <button type="button" onClick={startCamera} className={`h-40 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center text-slate-400 transition-all group ${donationType === 'CLOTHES' ? 'hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600' : 'hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-600'}`}>
@@ -851,7 +851,7 @@ export default function App() {
                             {foodImage && (
                                 <div className="relative rounded-3xl overflow-hidden bg-slate-100 border border-slate-200 group">
                                     <img src={foodImage} alt="Donation" className="w-full h-64 object-cover" />
-                                    
+
                                     <div className="absolute top-4 right-4 flex gap-2">
                                         {/* Edit Button */}
                                         <button type="button" onClick={() => setIsEditingImage(!isEditingImage)} className="bg-white/80 text-blue-600 p-2 rounded-full hover:bg-white transition-colors backdrop-blur-sm shadow-sm opacity-0 group-hover:opacity-100" title="Edit with AI">
@@ -867,16 +867,16 @@ export default function App() {
                                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white/90 backdrop-blur-xl p-4 rounded-2xl shadow-xl w-3/4 animate-fade-in-up">
                                             <p className="text-xs font-black text-slate-500 uppercase tracking-wide mb-2">AI Magic Edit</p>
                                             <div className="flex gap-2">
-                                                <input 
-                                                    type="text" 
-                                                    value={imageEditPrompt} 
-                                                    onChange={(e) => setImageEditPrompt(e.target.value)} 
+                                                <input
+                                                    type="text"
+                                                    value={imageEditPrompt}
+                                                    onChange={(e) => setImageEditPrompt(e.target.value)}
                                                     placeholder="E.g., 'Make it brighter'"
                                                     className="flex-1 px-3 py-2 rounded-xl text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                                 />
-                                                <button 
-                                                    type="button" 
-                                                    onClick={handleImageEdit} 
+                                                <button
+                                                    type="button"
+                                                    onClick={handleImageEdit}
                                                     disabled={isImageProcessing || !imageEditPrompt}
                                                     className="bg-blue-600 text-white p-2 rounded-xl disabled:opacity-50"
                                                 >
@@ -885,7 +885,7 @@ export default function App() {
                                             </div>
                                         </div>
                                     )}
-                                    
+
                                     {/* AI Analysis Result Overlay */}
                                     {!isEditingImage && (
                                     <div className="absolute bottom-0 inset-x-0 bg-white/95 backdrop-blur-md p-4 border-t border-slate-100">
@@ -919,11 +919,11 @@ export default function App() {
                         <div className="space-y-4">
                             <label className="text-xs font-black uppercase text-slate-400 tracking-widest block">Item Details</label>
                             <input type="text" placeholder={donationType === 'CLOTHES' ? "e.g. Winter Jackets" : "e.g. Rice & Curry"} className="w-full px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={foodName} onChange={e => setFoodName(e.target.value)} required />
-                            
+
                             <div className="relative">
                                 <textarea placeholder="Description (size, condition, ingredients...)" className="w-full px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all h-28 resize-none" value={foodDescription} onChange={e => setFoodDescription(e.target.value)} />
-                                <button 
-                                    type="button" 
+                                <button
+                                    type="button"
                                     onClick={isRecording ? stopRecording : startRecording}
                                     className={`absolute bottom-3 right-3 p-2 rounded-full transition-all ${isRecording ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}
                                     title="Speak Description"
@@ -931,7 +931,7 @@ export default function App() {
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
                                 </button>
                             </div>
-                            
+
                             <div className="flex gap-4">
                                 <input type="number" placeholder="Qty" className="flex-1 px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={quantityNum} onChange={e => setQuantityNum(e.target.value)} required />
                                 <select className="w-32 px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={unit} onChange={e => setUnit(e.target.value)}>
@@ -951,7 +951,7 @@ export default function App() {
                                     )}
                                 </select>
                             </div>
-                            
+
                             <div className="space-y-2">
                                 <p className="text-xs font-bold text-slate-500 uppercase ml-1">{donationType === 'CLOTHES' ? 'Pickup Deadline' : 'Expires In'}</p>
                                 <input type="datetime-local" className="w-full px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} required />
@@ -959,7 +959,7 @@ export default function App() {
 
                             <div className="flex flex-wrap gap-2 pt-2">
                                 {(donationType === 'CLOTHES' ? clothesTagsOptions : foodTagsOptions).map(tag => (
-                                    <button 
+                                    <button
                                         key={tag}
                                         type="button"
                                         onClick={() => toggleTag(tag)}
@@ -981,9 +981,9 @@ export default function App() {
                             </div>
 
                             {/* Location Picker Map */}
-                            <LocationPickerMap 
-                                lat={foodLat} 
-                                lng={foodLng} 
+                            <LocationPickerMap
+                                lat={foodLat}
+                                lng={foodLng}
                                 onLocationSelect={(lat, lng) => {
                                     setFoodLat(lat);
                                     setFoodLng(lng);
@@ -998,9 +998,21 @@ export default function App() {
 
                             <input type="text" placeholder="Line 1" className="w-full px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={foodLine1} onChange={e => setFoodLine1(e.target.value)} required />
                             <input type="text" placeholder="Line 2" className="w-full px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={foodLine2} onChange={e => setFoodLine2(e.target.value)} required />
+
                             <div className="flex gap-4">
                                 <input type="text" placeholder="Landmark" className="flex-1 px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={foodLandmark} onChange={e => setFoodLandmark(e.target.value)} />
-                                <input type="text" placeholder="Pincode" maxLength={6} className="w-32 px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={foodPincode} onChange={e => setFoodPincode(e.target.value)} required />
+                                <input
+                                    type="text"
+                                    placeholder="Pincode (6 digits)"
+                                    maxLength={6}
+                                    pattern="\d{6}"
+                                    inputMode="numeric"
+                                    title="Please enter a valid 6-digit Pincode"
+                                    className="w-40 px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all"
+                                    value={foodPincode}
+                                    onChange={e => setFoodPincode(e.target.value.replace(/\D/g, ''))}
+                                    required
+                                />
                             </div>
                         </div>
 
@@ -1018,8 +1030,8 @@ export default function App() {
                             <div className="text-xl font-black text-slate-800 tracking-tight">₹5</div>
                         </div>
 
-                        <button 
-                            type="submit" 
+                        <button
+                            type="submit"
                             disabled={isProcessingPayment}
                             className={`w-full text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs shadow-xl shadow-slate-200 transform hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-3 ${donationType === 'CLOTHES' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-900 hover:bg-slate-800'}`}
                         >
@@ -1042,13 +1054,13 @@ export default function App() {
 
         {/* Global Modal for Donor Verification Request */}
         {pendingVerificationPosting && (
-            <VerificationRequestModal 
+            <VerificationRequestModal
                 posting={pendingVerificationPosting}
                 onApprove={handleDonorApprove}
                 onReject={handleDonorReject}
             />
         )}
-        
+
         {/* Selected Posting Detail Modal (from Map View) */}
         {selectedPostingId && (
             <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in-up" onClick={() => setSelectedPostingId(null)}>
@@ -1061,7 +1073,7 @@ export default function App() {
                                 <button onClick={() => setSelectedPostingId(null)} className="absolute top-4 right-4 z-50 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full backdrop-blur-md transition-colors shadow-lg border border-white/10">
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                                 </button>
-                                <FoodCard 
+                                <FoodCard
                                     posting={p}
                                     user={user!}
                                     onUpdate={(id, updates) => { storage.updatePosting(id, updates); handleRefresh(); }}
@@ -1080,7 +1092,7 @@ export default function App() {
 
         {/* Chat Modal */}
         {activeChatPostingId && (
-            <ChatModal 
+            <ChatModal
                 posting={postings.find(p => p.id === activeChatPostingId)!}
                 user={user!}
                 onClose={() => setActiveChatPostingId(null)}
@@ -1089,12 +1101,13 @@ export default function App() {
 
         {/* Payment Modal */}
         {showPaymentModal && (
-            <PaymentModal 
-                amount={5} 
-                onSuccess={handlePaymentSuccess} 
-                onCancel={() => { setShowPaymentModal(false); setIsProcessingPayment(false); }} 
+            <PaymentModal
+                amount={5}
+                onSuccess={handlePaymentSuccess}
+                onCancel={() => { setShowPaymentModal(false); setIsProcessingPayment(false); }}
             />
         )}
     </Layout>
   );
 }
+
