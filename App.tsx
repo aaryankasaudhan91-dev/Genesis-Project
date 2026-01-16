@@ -19,6 +19,75 @@ import SplashScreen from './components/SplashScreen';
 import LocationPickerMap from './components/LocationPickerMap';
 import PaymentModal from './components/PaymentModal';
 
+const TRANSLATIONS = {
+  English: {
+    greeting: "Hello",
+    subtitle_donor: "What are we giving today? 🎁",
+    subtitle_volunteer: "Ready to be a hero? 🦸",
+    subtitle_requester: "Find help nearby. 🏠",
+    stat_impact: "Impact Score",
+    stat_donations: "Donations",
+    stat_reputation: "Reputation",
+    stat_missions: "Missions",
+    stat_requests: "Requests",
+    stat_received: "Received",
+    tab_active: "Active",
+    tab_history: "History",
+    tab_find: "Find Requests",
+    tab_tasks: "My Tasks",
+    tab_browse: "Browse",
+    tab_myreq: "My Requests",
+    nothing_title: "Nothing to see here... yet!",
+    nothing_desc_donor: "Your active donations will appear here. Start by posting some food or clothes!",
+    nothing_desc_other: "No active items found in this category. Check back soon!",
+    btn_donate: "Donate Now"
+  },
+  Hindi: {
+    greeting: "नमस्ते",
+    subtitle_donor: "आज हम क्या दान कर रहे हैं? 🎁",
+    subtitle_volunteer: "नायक बनने के लिए तैयार हैं? 🦸",
+    subtitle_requester: "आस-पास मदद खोजें। 🏠",
+    stat_impact: "प्रभाव स्कोर",
+    stat_donations: "दान",
+    stat_reputation: "प्रतिष्ठा",
+    stat_missions: "मिशन",
+    stat_requests: "अनुरोध",
+    stat_received: "प्राप्त",
+    tab_active: "सक्रिय",
+    tab_history: "इतिहास",
+    tab_find: "अनुरोध खोजें",
+    tab_tasks: "मेरे कार्य",
+    tab_browse: "ब्राउज़ करें",
+    tab_myreq: "मेरे अनुरोध",
+    nothing_title: "यहाँ अभी कुछ नहीं है...",
+    nothing_desc_donor: "आपके सक्रिय दान यहाँ दिखाई देंगे। भोजन या कपड़े पोस्ट करके शुरुआत करें!",
+    nothing_desc_other: "इस श्रेणी में कोई सक्रिय आइटम नहीं मिला। जल्द ही वापस देखें!",
+    btn_donate: "अभी दान करें"
+  },
+  Marathi: {
+    greeting: "नमस्कार",
+    subtitle_donor: "आज आपण काय दान करत आहोत? 🎁",
+    subtitle_volunteer: "नायक होण्यासाठी तयार आहात? 🦸",
+    subtitle_requester: "जवळपास मदत शोधा. 🏠",
+    stat_impact: "प्रभाव गुण",
+    stat_donations: "देणग्या",
+    stat_reputation: "प्रतिष्ठा",
+    stat_missions: "मोहिमा",
+    stat_requests: "विनंत्या",
+    stat_received: "प्राप्त",
+    tab_active: "सक्रिय",
+    tab_history: "इतिहास",
+    tab_find: "विनंत्या शोधा",
+    tab_tasks: "माझी कामे",
+    tab_browse: "ब्राउझ करा",
+    tab_myreq: "माझ्या विनंत्या",
+    nothing_title: "येथे अद्याप काहीही नाही...",
+    nothing_desc_donor: "तुमच्या सक्रिय देणग्या येथे दिसतील. काही अन्न किंवा कपडे पोस्ट करून सुरुवात करा!",
+    nothing_desc_other: "या श्रेणीमध्ये कोणतेही सक्रिय आयटम आढळले नाहीत. लवकरच परत तपासा!",
+    btn_donate: "आता दान करा"
+  }
+};
+
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [user, setUser] = useState<User | null>(null);
@@ -594,6 +663,12 @@ export default function App() {
       }
   };
 
+  const t = (key: keyof typeof TRANSLATIONS['English']) => {
+    const lang = user?.language || 'English';
+    const dict = TRANSLATIONS[lang as keyof typeof TRANSLATIONS] || TRANSLATIONS['English'];
+    return dict[key] || TRANSLATIONS['English'][key];
+  };
+
   // --- RENDER HELPERS ---
   const renderStatsCard = (label: string, value: string | number, icon: string, colorClass: string) => (
     <div className={`p-5 rounded-[2rem] bg-white border border-slate-100 shadow-sm flex items-center gap-4 transition-transform hover:scale-105 flex-1 md:flex-none min-w-[150px] ${colorClass}`}>
@@ -609,35 +684,36 @@ export default function App() {
 
   const renderDashboardHeader = () => {
     if (!user) return null;
+
     return (
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
             <div>
                 <h2 className="text-4xl font-black text-slate-800 tracking-tight leading-none mb-2">
-                    Hello, <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500">{user.name?.split(' ')[0]}</span>.
+                    {t('greeting')}, <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500">{user.name?.split(' ')[0]}</span>.
                 </h2>
                 <p className="text-slate-500 font-medium text-lg">
-                    {user.role === UserRole.DONOR && "What are we giving today? 🎁"}
-                    {user.role === UserRole.VOLUNTEER && "Ready to be a hero? 🦸"}
-                    {user.role === UserRole.REQUESTER && "Find help nearby. 🏠"}
+                    {user.role === UserRole.DONOR && t('subtitle_donor')}
+                    {user.role === UserRole.VOLUNTEER && t('subtitle_volunteer')}
+                    {user.role === UserRole.REQUESTER && t('subtitle_requester')}
                 </p>
             </div>
             <div className="flex flex-wrap md:flex-nowrap gap-3 w-full md:w-auto">
                 {user.role === UserRole.DONOR && (
                     <>
-                        {renderStatsCard("Impact Score", user.impactScore || 0, "✨", "bg-gradient-to-br from-amber-50 to-orange-50 text-orange-900")}
-                        {renderStatsCard("Donations", postings.filter(p => p.donorId === user.id).length, "📦", "bg-gradient-to-br from-emerald-50 to-teal-50 text-emerald-900")}
+                        {renderStatsCard(t('stat_impact'), user.impactScore || 0, "✨", "bg-gradient-to-br from-amber-50 to-orange-50 text-orange-900")}
+                        {renderStatsCard(t('stat_donations'), postings.filter(p => p.donorId === user.id).length, "📦", "bg-gradient-to-br from-emerald-50 to-teal-50 text-emerald-900")}
                     </>
                 )}
                 {user.role === UserRole.VOLUNTEER && (
                     <>
-                         {renderStatsCard("Reputation", user.averageRating?.toFixed(1) || "5.0", "⭐", "bg-gradient-to-br from-yellow-50 to-amber-50 text-amber-900")}
-                         {renderStatsCard("Missions", postings.filter(p => p.volunteerId === user.id && p.status === FoodStatus.DELIVERED).length, "🚴", "bg-gradient-to-br from-blue-50 to-indigo-50 text-indigo-900")}
+                         {renderStatsCard(t('stat_reputation'), user.averageRating?.toFixed(1) || "5.0", "⭐", "bg-gradient-to-br from-yellow-50 to-amber-50 text-amber-900")}
+                         {renderStatsCard(t('stat_missions'), postings.filter(p => p.volunteerId === user.id && p.status === FoodStatus.DELIVERED).length, "🚴", "bg-gradient-to-br from-blue-50 to-indigo-50 text-indigo-900")}
                     </>
                 )}
                  {user.role === UserRole.REQUESTER && (
                     <>
-                         {renderStatsCard("Requests", postings.filter(p => p.orphanageId === user.id).length, "📝", "bg-gradient-to-br from-purple-50 to-pink-50 text-purple-900")}
-                         {renderStatsCard("Received", postings.filter(p => p.orphanageId === user.id && p.status === FoodStatus.DELIVERED).length, "🥣", "bg-gradient-to-br from-emerald-50 to-teal-50 text-teal-900")}
+                         {renderStatsCard(t('stat_requests'), postings.filter(p => p.orphanageId === user.id).length, "📝", "bg-gradient-to-br from-purple-50 to-pink-50 text-purple-900")}
+                         {renderStatsCard(t('stat_received'), postings.filter(p => p.orphanageId === user.id && p.status === FoodStatus.DELIVERED).length, "🥣", "bg-gradient-to-br from-emerald-50 to-teal-50 text-teal-900")}
                     </>
                 )}
             </div>
@@ -654,21 +730,21 @@ export default function App() {
             <div className="bg-white p-1.5 rounded-full border border-slate-200 shadow-sm inline-flex">
                 {user.role === UserRole.DONOR && (
                     <>
-                    <button onClick={() => setActiveTab('active')} className={tabClass(activeTab === 'active')}>Active</button>
-                    <button onClick={() => setActiveTab('history')} className={tabClass(activeTab === 'history')}>History</button>
+                    <button onClick={() => setActiveTab('active')} className={tabClass(activeTab === 'active')}>{t('tab_active')}</button>
+                    <button onClick={() => setActiveTab('history')} className={tabClass(activeTab === 'history')}>{t('tab_history')}</button>
                     </>
                 )}
                 {user.role === UserRole.VOLUNTEER && (
                     <>
-                    <button onClick={() => setActiveTab('opportunities')} className={tabClass(activeTab === 'opportunities')}>Find Requests</button>
-                    <button onClick={() => setActiveTab('mytasks')} className={tabClass(activeTab === 'mytasks')}>My Tasks</button>
-                    <button onClick={() => setActiveTab('history')} className={tabClass(activeTab === 'history')}>History</button>
+                    <button onClick={() => setActiveTab('opportunities')} className={tabClass(activeTab === 'opportunities')}>{t('tab_find')}</button>
+                    <button onClick={() => setActiveTab('mytasks')} className={tabClass(activeTab === 'mytasks')}>{t('tab_tasks')}</button>
+                    <button onClick={() => setActiveTab('history')} className={tabClass(activeTab === 'history')}>{t('tab_history')}</button>
                     </>
                 )}
                 {user.role === UserRole.REQUESTER && (
                     <>
-                    <button onClick={() => setActiveTab('browse')} className={tabClass(activeTab === 'browse')}>Browse</button>
-                    <button onClick={() => setActiveTab('myrequests')} className={tabClass(activeTab === 'myrequests')}>My Requests</button>
+                    <button onClick={() => setActiveTab('browse')} className={tabClass(activeTab === 'browse')}>{t('tab_browse')}</button>
+                    <button onClick={() => setActiveTab('myrequests')} className={tabClass(activeTab === 'myrequests')}>{t('tab_myreq')}</button>
                     </>
                 )}
             </div>
@@ -694,13 +770,13 @@ export default function App() {
                 <div className="w-24 h-24 bg-gradient-to-br from-slate-100 to-white rounded-full flex items-center justify-center mb-6 shadow-inner border border-white">
                         <span className="text-4xl filter grayscale opacity-50">🍃</span>
                 </div>
-                <h3 className="text-2xl font-black text-slate-800 mb-3 tracking-tight">Nothing to see here... yet!</h3>
+                <h3 className="text-2xl font-black text-slate-800 mb-3 tracking-tight">{t('nothing_title')}</h3>
                 <p className="text-slate-500 font-medium max-w-md mx-auto leading-relaxed">
-                    {user?.role === UserRole.DONOR ? "Your active donations will appear here. Start by posting some food or clothes!" : "No active items found in this category. Check back soon!"}
+                    {user?.role === UserRole.DONOR ? t('nothing_desc_donor') : t('nothing_desc_other')}
                 </p>
                 {user?.role === UserRole.DONOR && activeTab === 'active' && (
                         <button onClick={() => setIsAddingFood(true)} className="mt-8 px-8 py-4 bg-emerald-600 text-white font-black rounded-2xl uppercase text-xs tracking-widest shadow-xl shadow-emerald-200/50 hover:bg-emerald-700 hover:scale-110 transition-all">
-                            Donate Now
+                            {t('btn_donate')}
                         </button>
                 )}
             </div>
@@ -1110,4 +1186,3 @@ export default function App() {
     </Layout>
   );
 }
-

@@ -16,7 +16,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdate, onDelete, o
       messages: true
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [language, setLanguage] = useState('English');
+  const [language, setLanguage] = useState(user.language || 'English');
   const [searchRadius, setSearchRadius] = useState<number>(user.searchRadius || 10);
   const [donationFilter, setDonationFilter] = useState<'ALL' | 'FOOD' | 'CLOTHES'>(user.donationTypeFilter || 'ALL');
   
@@ -59,6 +59,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdate, onDelete, o
       onUpdate({ donationTypeFilter: filter });
   };
 
+  const handleLanguageChange = (lang: string) => {
+      setLanguage(lang);
+      onUpdate({ language: lang });
+      localStorage.setItem('app_language', lang);
+  };
+
   return (
     <div className="max-w-2xl mx-auto pb-12 animate-fade-in-up">
       <button onClick={onBack} className="mb-6 flex items-center text-slate-500 font-bold text-sm hover:text-emerald-600 transition-colors">
@@ -90,10 +96,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdate, onDelete, o
                         </div>
                         <span className="font-bold text-slate-700">Language</span>
                     </div>
-                    <select value={language} onChange={e => setLanguage(e.target.value)} className="bg-white border border-slate-200 text-slate-600 text-sm font-bold rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                        <option>English</option>
-                        <option>Hindi</option>
-                        <option>Marathi</option>
+                    <select value={language} onChange={e => handleLanguageChange(e.target.value)} className="bg-white border border-slate-200 text-slate-600 text-sm font-bold rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        <option value="English">🇬🇧 English</option>
+                        <option value="Hindi">🇮🇳 Hindi</option>
+                        <option value="Marathi">🚩 Marathi</option>
                     </select>
                 </div>
 

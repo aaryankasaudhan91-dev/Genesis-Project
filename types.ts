@@ -47,6 +47,7 @@ export interface User {
   notificationPreferences?: NotificationPreferences;
   searchRadius?: number;
   donationTypeFilter?: 'ALL' | 'FOOD' | 'CLOTHES';
+  language?: string;
 }
 
 export interface ChatMessage {
