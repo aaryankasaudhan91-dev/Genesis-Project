@@ -12,6 +12,7 @@ interface FoodCardProps {
   user: User;
   onUpdate: (id: string, updates: Partial<FoodPosting>) => void;
   onDelete?: (id: string) => void;
+  onClose?: () => void;
   currentLocation?: { lat: number; lng: number };
   onRateVolunteer?: (postingId: string, rating: number, feedback: string) => void;
   onChatClick?: (postingId: string) => void;
@@ -46,7 +47,7 @@ const resizeImage = (file: File): Promise<string> => {
   });
 };
 
-const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, currentLocation, onRateVolunteer, onChatClick, volunteerProfile, requesterProfile }) => {
+const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, onClose, currentLocation, onRateVolunteer, onChatClick, volunteerProfile, requesterProfile }) => {
   const [showDirections, setShowDirections] = useState(false);
   const [showTracking, setShowTracking] = useState(false);
   const [showRating, setShowRating] = useState(false);
@@ -368,8 +369,19 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
         {/* Gradient Overlay */}
         <div className={`absolute inset-0 bg-gradient-to-t via-slate-900/20 to-transparent ${isClothes ? 'from-indigo-950/90' : 'from-slate-900/90'}`}></div>
         
+        {/* Close Button if onClose is provided */}
+        {onClose && (
+            <button 
+                onClick={(e) => { e.stopPropagation(); onClose(); }}
+                className="absolute top-4 right-4 z-30 p-2 bg-black/40 hover:bg-black/60 text-white rounded-full backdrop-blur-md transition-all border border-white/10 shadow-sm"
+                title="Close"
+            >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+        )}
+
         {/* Top Badges */}
-        <div className="absolute top-5 right-5 flex flex-col gap-2 items-end z-20">
+        <div className={`absolute ${onClose ? 'top-16' : 'top-5'} right-5 flex flex-col gap-2 items-end z-20 transition-all`}>
              {renderStatusPill()}
              {isClothes && (
                  <span className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-md shadow-sm bg-white/20 text-white border border-white/20">

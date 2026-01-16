@@ -1085,7 +1085,7 @@ export default function App() {
                                     inputMode="numeric"
                                     title="Please enter a valid 6-digit Pincode"
                                     className="w-40 px-5 py-4 border border-slate-200 bg-slate-50/50 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 transition-all"
-                                    value={foodPincode}
+                               value={foodPincode}
                                     onChange={e => setFoodPincode(e.target.value.replace(/\D/g, ''))}
                                     required
                                 />
