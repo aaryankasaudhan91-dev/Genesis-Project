@@ -37,7 +37,7 @@ export interface User {
   password?: string;
   role: UserRole;
   address?: Address;
-  orgCategory?: string;
+  orgCategory?: string; // e.g., Restaurant, Bakery
   orgName?: string;
   favoriteRequesterIds?: string[];
   impactScore?: number;
@@ -47,7 +47,32 @@ export interface User {
   notificationPreferences?: NotificationPreferences;
   searchRadius?: number;
   donationTypeFilter?: 'ALL' | 'FOOD' | 'CLOTHES';
+  sortBy?: 'NEWEST' | 'CLOSEST' | 'EXPIRY';
   language?: string;
+  
+  // Volunteer Specific
+  volunteerCategory?: 'Student' | 'Individual';
+  volunteerIdType?: string;
+  isVerified?: boolean; // Basic verified flag
+
+  // Donor Specific
+  donorType?: 'Individual' | 'Restaurant' | 'Corporate' | 'Event';
+  taxId?: string; // PAN or Tax ID
+  isTaxVerified?: boolean;
+
+  // Requester (NGO/Orphanage) Specific Verification
+  requesterType?: 'Orphanage' | 'OldAgeHome' | 'NGO' | 'Other';
+  verificationStatus?: 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED';
+  documentUrls?: {
+    registrationCert?: string;
+    orgPan?: string;
+    darpanId?: string; // Optional
+    taxExemptCert?: string; // 12A/80G
+    bankProof?: string;
+    jjAct?: string; // Orphanage only
+    municipalLicense?: string; // Old Age Home only
+    facilityVideo?: string; // Level 3 validation
+  };
 }
 
 export interface ChatMessage {
@@ -63,6 +88,7 @@ export interface ChatMessage {
 export interface Rating {
   raterId: string;
   raterRole: UserRole;
+  targetId: string; // The user being rated
   rating: number;
   feedback?: string;
   createdAt: number;

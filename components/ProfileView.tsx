@@ -76,8 +76,8 @@ const ProfileView: React.FC<ProfileViewProps> = ({ user, onUpdate, onBack }) => 
                 </div>
             </div>
             
-            {/* Rating Stat (Only for Volunteers) */}
-            {user?.role === UserRole.VOLUNTEER && (
+            {/* Rating Stat (For Volunteers AND Requesters) */}
+            {(user?.role === UserRole.VOLUNTEER || user?.role === UserRole.REQUESTER) && (
                 <div className="absolute bottom-4 right-8 bg-white/20 backdrop-blur-md rounded-2xl p-3 flex gap-4 text-white border border-white/20">
                     <div className="text-center">
                         <div className="flex items-center justify-center gap-1 font-black text-xl">

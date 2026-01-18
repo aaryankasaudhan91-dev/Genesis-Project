@@ -16,6 +16,13 @@ export interface RouteOptimizationResult {
   trafficTips: string;
 }
 
+export interface MultiStopRouteResult {
+  orderedStopIds: string[];
+  overview: string;
+  totalEstimatedTime: string;
+  stopReasoning: { stopId: string; reason: string }[];
+}
+
 export interface ReverseGeocodeResult {
   line1: string;
   line2: string;
@@ -418,6 +425,51 @@ export const getOptimizedRoute = async (origin: string, destination: string, way
   }
 };
 
+// --- 7b. Multi-Stop Route Optimization ---
+export const optimizeMultiStopRoute = async (
+    startLocation: { lat: number; lng: number },
+    stops: { id: string; name: string; lat: number; lng: number; expiry: string }[]
+): Promise<MultiStopRouteResult | null> => {
+    try {
+        const stopsJson = JSON.stringify(stops);
+        const userLoc = `${startLocation.lat}, ${startLocation.lng}`;
+        
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-pro-preview', // Using Pro for complex reasoning
+            contents: `
+                You are an expert logistics coordinator for a food rescue network.
+                
+                Volunteer Start Location: [${userLoc}]
+                Available Food Pickups: ${stopsJson}
+                
+                Task:
+                Create an optimized driving route sequence for the volunteer.
+                1. Prioritize pickups that are expiring soon (URGENT).
+                2. Minimize total travel distance to save fuel/time.
+                3. The route starts at the volunteer's location.
+                
+                Return a JSON object:
+                {
+                    "orderedStopIds": ["id1", "id2", ...], // The sequence of stop IDs to visit
+                    "overview": "A 1-sentence summary of the route strategy (e.g. 'Prioritizing the urgent meal at X then moving north.')",
+                    "totalEstimatedTime": "e.g. 45 mins",
+                    "stopReasoning": [
+                        { "stopId": "id1", "reason": "Why visit this first? (e.g. 'Expires in 1 hr')" }
+                    ]
+                }
+            `,
+            config: {
+                responseMimeType: 'application/json'
+            }
+        });
+        
+        return JSON.parse(response.text || "null");
+    } catch (e) {
+        console.error("Multi-stop optimization failed:", e);
+        return null;
+    }
+};
+
 // --- 8. Quick ETA Calc ---
 export const calculateLiveEta = async (
   origin: { lat: number; lng: number },
@@ -476,4 +528,155 @@ export const generateAvatar = async (userName: string): Promise<string | null> =
     const style = userName.length % 2 === 0 ? 'notionists' : 'bottts';
     return `https://api.dicebear.com/9.x/${style}/svg?seed=${encodeURIComponent(userName)}`;
   }
+};
+
+// --- 11. Volunteer ID Verification ---
+export const verifyVolunteerId = async (base64Data: string, idType: string): Promise<{ isValid: boolean; feedback: string }> => {
+    let criteria = '';
+    
+    switch (idType) {
+        case 'aadhaar':
+            criteria = '- Must contain 12-digit Aadhaar number.\n- Must contain the Indian Emblem or UIDAI logo.';
+            break;
+        case 'pan':
+            criteria = '- Must contain the heading "INCOME TAX DEPARTMENT".\n- Must contain a 10-character alphanumeric PAN.\n- Must have a hologram.';
+            break;
+        case 'driving_license':
+            criteria = '- Must contain "Union of India" or State Government heading.\n- Must contain a visible Driving License number.';
+            break;
+        case 'student_id':
+            criteria = '- Must look like an educational institution ID card.\n- Must contain fields like Name, Student ID, Course.';
+            break;
+        default:
+            criteria = '- Must look like a valid government-issued ID.';
+            break;
+    }
+
+    const prompt = `
+      You are an Identity Verification Agent for a volunteer platform.
+      
+      Task: Verify if the uploaded image is a valid ${idType.replace('_', ' ').toUpperCase()}.
+      
+      Strict Criteria:
+      ${criteria}
+      
+      Output JSON ONLY:
+      {
+        "isValid": boolean,
+        "feedback": "Short reason for decision (e.g., 'Valid PAN Card detected' or 'Image is blurry/missing header')."
+      }
+    `;
+  
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: 'image/jpeg', data: getBase64(base64Data) } },
+                    { text: prompt }
+                ]
+            },
+            config: { responseMimeType: 'application/json' }
+        });
+        return JSON.parse(response.text || "{}");
+    } catch (e) {
+        console.error("ID Verification Error:", e);
+        return { isValid: false, feedback: "AI service unavailable. Please try a clearer photo." };
+    }
+  };
+
+// --- 12. Requester (NGO) Document Verification ---
+export const verifyRequesterDocument = async (
+    base64Data: string, 
+    docType: string, 
+    orgName: string
+): Promise<{ isValid: boolean; feedback: string }> => {
+    
+    let specificChecks = "";
+    if (docType === 'org_pan') {
+        specificChecks = `
+        - Check if the 4th character of the PAN number is NOT 'P' (P is for Individual). It should be 'T', 'A', 'B', 'C', 'F', 'G', 'H', 'J', or 'L'.
+        - If the 4th character is 'P', set isValid to false and feedback to "Personal PAN detected. Please upload Organization PAN."
+        `;
+    } else if (docType === 'jj_act') {
+        specificChecks = "- Must be a valid Registration under Juvenile Justice (Care and Protection of Children) Act.";
+    } else if (docType === 'municipal_license') {
+        specificChecks = "- Must be a valid Municipal Corporation License for operating a care home.";
+    } else if (docType === '12a_80g') {
+        specificChecks = "- Check for 12A or 80G Tax Exemption references.";
+    }
+
+    const prompt = `
+      You are a Document Compliance Auditor for an NGO onboarding platform.
+      
+      Task: Verify if the uploaded image is a valid ${docType.replace(/_/g, ' ').toUpperCase()}.
+      Target Organization Name: "${orgName}"
+      
+      Verification Rules:
+      1. Document must be legible.
+      2. Document Name should roughly match the Target Organization Name (fuzzy match is okay).
+      3. ${specificChecks}
+      
+      Output JSON ONLY:
+      {
+        "isValid": boolean,
+        "feedback": "Short reason (e.g. 'Valid Org PAN matched' or 'Name mismatch: Document says ABC, User says XYZ')"
+      }
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: 'image/jpeg', data: getBase64(base64Data) } },
+                    { text: prompt }
+                ]
+            },
+            config: { responseMimeType: 'application/json' }
+        });
+        return JSON.parse(response.text || "{}");
+    } catch (e) {
+        console.error("Requester Doc Verification Error:", e);
+        return { isValid: false, feedback: "AI verification failed. Please ensure image is clear." };
+    }
+};
+
+// --- 13. Donor Identity Verification (KYC) ---
+export const verifyDonorIdentity = async (base64Data: string, expectedName: string): Promise<{ isValid: boolean; feedback: string; idNumber?: string }> => {
+    const prompt = `
+      You are a KYC Verification Agent.
+      
+      Task: Verify if the uploaded image is a valid PAN Card (Indian Tax ID).
+      User Context: The user claims their name is "${expectedName}".
+      
+      Checks:
+      1. Is it a PAN Card?
+      2. Does the name on the card reasonably match "${expectedName}"? (Allow minor spelling variations or initials).
+      3. Extract the PAN Number (10 character alphanumeric).
+      
+      Output JSON ONLY:
+      {
+        "isValid": boolean,
+        "feedback": "Short reason (e.g. 'Valid PAN. Name matches.', 'Not a PAN card', or 'Name mismatch').",
+        "idNumber": "ABCDE1234F" (or null if invalid)
+      }
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: 'image/jpeg', data: getBase64(base64Data) } },
+                    { text: prompt }
+                ]
+            },
+            config: { responseMimeType: 'application/json' }
+        });
+        return JSON.parse(response.text || "{}");
+    } catch (e) {
+        console.error("Donor Identity Verification Error:", e);
+        return { isValid: false, feedback: "AI service unavailable." };
+    }
 };

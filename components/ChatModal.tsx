@@ -15,18 +15,12 @@ const ChatModal: React.FC<ChatModalProps> = ({ posting, user, onClose }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Initial load
-    setMessages(storage.getMessages(posting.id));
-    
-    // Polling for new messages (simulating real-time socket)
-    const interval = setInterval(() => {
-        const storedMsgs = storage.getMessages(posting.id);
-        if (storedMsgs.length !== messages.length) {
-            setMessages(storedMsgs);
-        }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [posting.id, messages.length]);
+    // Fix: Using real-time listenMessages subscription instead of non-existent getMessages polling
+    const unsub = storage.listenMessages(posting.id, (msgs) => {
+        setMessages(msgs);
+    });
+    return () => unsub();
+  }, [posting.id]);
 
   useEffect(() => { 
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); 
@@ -47,6 +41,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ posting, user, onClose }) => {
     };
     
     storage.saveMessage(posting.id, msg);
+    // Local update for immediate feedback
     setMessages(prev => [...prev, msg]);
     setInputText('');
   };

@@ -16,9 +16,6 @@ const VerificationRequestModal: React.FC<VerificationRequestModalProps> = ({ pos
   const proofLabel = isDelivery ? "Proof of Delivery" : "Proof of Pickup";
   const confirmText = isDelivery ? "Confirm Delivery" : "Confirm Pickup";
   
-  // For delivery, typically the Volunteer uploads it. For pickup, also Volunteer uploads it.
-  const uploaderName = posting.volunteerName || "Volunteer";
-
   return (
     <div className="fixed inset-0 z-[300] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in-up">
       <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl relative">
@@ -48,8 +45,10 @@ const VerificationRequestModal: React.FC<VerificationRequestModalProps> = ({ pos
 
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6 text-center">
                 <p className="text-sm text-slate-600 font-medium">
-                    <span className="font-black text-slate-800">{uploaderName}</span> has uploaded this image. 
-                    Does this look correct?
+                    {isDelivery 
+                        ? <><span className="font-black text-slate-800">Proof of Delivery</span> has been uploaded. Does this look correct?</>
+                        : <><span className="font-black text-slate-800">{posting.volunteerName || "Volunteer"}</span> has uploaded this image. Does this look correct?</>
+                    }
                 </p>
             </div>
 

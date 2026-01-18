@@ -36,8 +36,10 @@ const LiveTrackingModal: React.FC<LiveTrackingModalProps> = ({ posting, onClose 
 
   // Poll for updates
   useEffect(() => {
-    const interval = setInterval(() => {
-      const updated = storage.getPostings().find(p => p.id === posting.id);
+    const interval = setInterval(async () => {
+      // Fix: Await storage.getPostings() before calling .find() to correctly handle Promise return type
+      const postings = await storage.getPostings();
+      const updated = postings.find(p => p.id === posting.id);
       if (updated) setLivePosting(updated);
     }, 2000);
     return () => clearInterval(interval);

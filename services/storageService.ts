@@ -1,13 +1,23 @@
 
-import { User, FoodPosting, FoodStatus, UserRole, Notification, ChatMessage, Rating } from '../types';
+import { db } from './firebaseConfig';
+import { 
+  collection, getDocs, doc, setDoc, updateDoc, deleteDoc, 
+  onSnapshot, query, where, orderBy, getDoc 
+} from 'firebase/firestore';
+import { User, FoodPosting, ChatMessage, Rating, Notification } from '../types';
 
-const STORAGE_KEY_POSTINGS = 'food_rescue_postings';
-const STORAGE_KEY_USERS = 'food_rescue_users';
-const STORAGE_KEY_NOTIFICATIONS = 'food_rescue_notifications';
-const STORAGE_KEY_CHATS = 'food_rescue_chats';
+// --- Fallback for Simulation Mode ---
+const isSim = !db;
 
+// In-memory storage for simulation
+let simUsers: User[] = [];
+let simPostings: FoodPosting[] = [];
+let simMessages: Record<string, ChatMessage[]> = {};
+let simNotifications: Notification[] = [];
+
+// Helper for distance calculation
 export const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  const R = 6371;
+  const R = 6371; // Radius of the earth in km
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
   const a = 
@@ -15,449 +25,194 @@ export const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2
     Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
     Math.sin(dLon / 2) * Math.sin(dLon / 2); 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
-  return R * c;
-};
-
-const getStoredNotifications = (): Notification[] => {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY_NOTIFICATIONS) || '[]');
-  } catch {
-    return [];
-  }
-};
-
-const saveStoredNotifications = (notifications: Notification[]) => {
-  localStorage.setItem(STORAGE_KEY_NOTIFICATIONS, JSON.stringify(notifications));
-};
-
-// Helper to check prefs
-const shouldNotify = (user: User | undefined, type: 'newPostings' | 'missionUpdates' | 'messages'): boolean => {
-    if (!user) return false;
-    const prefs = user.notificationPreferences || { newPostings: true, missionUpdates: true, messages: true };
-    return prefs[type];
+  return R * c; // Distance in km
 };
 
 export const storage = {
-  getUsers: (): User[] => {
+  // --- USERS ---
+  getUsers: async (): Promise<User[]> => {
+    if (isSim) return simUsers;
     try {
-        const data = localStorage.getItem(STORAGE_KEY_USERS);
-        const users = data ? JSON.parse(data) : [];
-        return Array.isArray(users) ? users.filter((u: any) => u && typeof u === 'object' && typeof u.name === 'string') : [];
-    } catch {
-        return [];
+        const snap = await getDocs(collection(db, 'users'));
+        return snap.docs.map(d => d.data() as User);
+    } catch (e) { console.error(e); return []; }
+  },
+  getUser: async (id: string): Promise<User | undefined> => {
+    if (isSim) return simUsers.find(u => u.id === id);
+    try {
+        const snap = await getDoc(doc(db, 'users', id));
+        return snap.exists() ? snap.data() as User : undefined;
+    } catch (e) { console.error(e); return undefined; }
+  },
+  saveUser: async (user: User) => {
+    if (isSim) {
+      const idx = simUsers.findIndex(u => u.id === user.id);
+      if (idx >= 0) simUsers[idx] = user; else simUsers.push(user);
+      return;
+    }
+    await setDoc(doc(db, 'users', user.id), user);
+  },
+  updateUser: async (id: string, updates: Partial<User>) => {
+    if (isSim) {
+      const u = simUsers.find(u => u.id === id);
+      if (u) Object.assign(u, updates);
+      return;
+    }
+    await updateDoc(doc(db, 'users', id), updates);
+  },
+  deleteUser: async (id: string) => {
+    if (isSim) {
+      simUsers = simUsers.filter(u => u.id !== id);
+      return;
+    }
+    await deleteDoc(doc(db, 'users', id));
+  },
+
+  // --- POSTINGS ---
+  getPostings: async (): Promise<FoodPosting[]> => {
+    if (isSim) return simPostings;
+    try {
+        const snap = await getDocs(query(collection(db, 'postings'), orderBy('createdAt', 'desc')));
+        return snap.docs.map(d => d.data() as FoodPosting);
+    } catch (e) { console.error(e); return []; }
+  },
+  savePosting: async (posting: FoodPosting) => {
+    if (isSim) {
+      simPostings.push(posting);
+      return;
+    }
+    await setDoc(doc(db, 'postings', posting.id), posting);
+  },
+  updatePosting: async (id: string, updates: Partial<FoodPosting>) => {
+    if (isSim) {
+      const p = simPostings.find(p => p.id === id);
+      if (p) Object.assign(p, updates);
+      return;
+    }
+    await updateDoc(doc(db, 'postings', id), updates);
+  },
+  deletePosting: async (id: string) => {
+    if (isSim) {
+      simPostings = simPostings.filter(p => p.id !== id);
+      return;
+    }
+    await deleteDoc(doc(db, 'postings', id));
+  },
+
+  // --- MESSAGES ---
+  listenMessages: (postingId: string, callback: (msgs: ChatMessage[]) => void) => {
+    if (isSim) {
+      callback(simMessages[postingId] || []);
+      return () => {};
+    }
+    const q = query(collection(db, 'postings', postingId, 'messages'), orderBy('createdAt', 'asc'));
+    return onSnapshot(q, (snap) => {
+      callback(snap.docs.map(d => d.data() as ChatMessage));
+    });
+  },
+  saveMessage: async (postingId: string, message: ChatMessage) => {
+    if (isSim) {
+      if (!simMessages[postingId]) simMessages[postingId] = [];
+      simMessages[postingId].push(message);
+      return;
+    }
+    await setDoc(doc(db, 'postings', postingId, 'messages', message.id), message);
+  },
+
+  // --- RATINGS ---
+  submitUserRating: async (postingId: string, rating: Rating) => {
+    // 1. Update the Posting (store rating in array)
+    if (isSim) {
+        const posting = simPostings.find(p => p.id === postingId);
+        if (posting) {
+            if (!posting.ratings) posting.ratings = [];
+            posting.ratings.push(rating);
+        }
+        
+        // 2. Update the Target User (Aggregate stats)
+        const targetUser = simUsers.find(u => u.id === rating.targetId);
+        if (targetUser) {
+            const count = targetUser.ratingsCount || 0;
+            const avg = targetUser.averageRating || 5.0;
+            const newCount = count + 1;
+            const newAvg = ((avg * count) + rating.rating) / newCount;
+            targetUser.averageRating = newAvg;
+            targetUser.ratingsCount = newCount;
+        }
+        return;
+    }
+
+    // Real Firestore Implementation
+    // Note: In production, this should be a Transaction or Cloud Function to avoid race conditions
+    try {
+        // A. Update Posting
+        const postingRef = doc(db, 'postings', postingId);
+        const postingSnap = await getDoc(postingRef);
+        if (postingSnap.exists()) {
+            const currentRatings = postingSnap.data().ratings || [];
+            await updateDoc(postingRef, {
+                ratings: [...currentRatings, rating]
+            });
+        }
+
+        // B. Update Target User
+        const userRef = doc(db, 'users', rating.targetId);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+            const userData = userSnap.data() as User;
+            const count = userData.ratingsCount || 0;
+            const avg = userData.averageRating || 0;
+            
+            // If first rating, start fresh. Otherwise, weighted average.
+            const newCount = count + 1;
+            // Handle case where avg might be undefined or 0 initially
+            const currentTotal = (count > 0) ? avg * count : 0;
+            const newAvg = (currentTotal + rating.rating) / newCount;
+
+            await updateDoc(userRef, {
+                averageRating: newAvg,
+                ratingsCount: newCount
+            });
+        }
+    } catch (e) {
+        console.error("Error submitting rating:", e);
     }
   },
-  getUser: (id: string): User | undefined => {
-    const users = storage.getUsers();
-    return users.find(u => u.id === id);
+
+  // --- NOTIFICATIONS ---
+  listenNotifications: (userId: string, callback: (notifications: Notification[]) => void) => {
+    if (isSim) {
+      callback(simNotifications.filter(n => n.userId === userId));
+      return () => {};
+    }
+    const q = query(collection(db, 'notifications'), where('userId', '==', userId), orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snap) => {
+      callback(snap.docs.map(d => d.data() as Notification));
+    });
   },
-  saveUser: (user: User) => {
-    const users = storage.getUsers();
-    const newUser = { 
-        ...user, 
-        impactScore: user.impactScore !== undefined ? user.impactScore : 0, 
-        averageRating: user.averageRating !== undefined ? user.averageRating : 0, 
-        ratingsCount: user.ratingsCount !== undefined ? user.ratingsCount : 0 
+
+  getNotifications: async (userId: string): Promise<Notification[]> => {
+    if (isSim) return simNotifications.filter(n => n.userId === userId);
+    try {
+        const q = query(collection(db, 'notifications'), where('userId', '==', userId), orderBy('createdAt', 'desc'));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => d.data() as Notification);
+    } catch (e) { console.error(e); return []; }
+  },
+
+  createNotification: async (userId: string, message: string, type: 'INFO' | 'ACTION' | 'SUCCESS') => {
+    const n: Notification = {
+        id: Math.random().toString(36).substr(2, 9),
+        userId,
+        message,
+        type,
+        isRead: false,
+        createdAt: Date.now()
     };
-    users.push(newUser);
-    localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
-  },
-  updateUser: (id: string, updates: Partial<User>) => {
-    const users = storage.getUsers();
-    const index = users.findIndex(u => u.id === id);
-    if (index !== -1) {
-      const updatedUser = { ...users[index], ...updates };
-      users[index] = updatedUser;
-      localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
-      return updatedUser;
+    if (isSim) {
+        simNotifications.push(n);
+        return;
     }
-    return null;
-  },
-  deleteUser: (id: string) => {
-    let users = storage.getUsers();
-    users = users.filter(u => u.id !== id);
-    localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
-  },
-  toggleFavorite: (donorId: string, requesterId: string) => {
-    const users = storage.getUsers();
-    const donorIndex = users.findIndex(u => u.id === donorId);
-    if (donorIndex !== -1) {
-      const donor = users[donorIndex];
-      const favorites = donor.favoriteRequesterIds || [];
-      const isFavorite = favorites.includes(requesterId);
-      
-      if (isFavorite) {
-        donor.favoriteRequesterIds = favorites.filter(id => id !== requesterId);
-      } else {
-        donor.favoriteRequesterIds = [...favorites, requesterId];
-      }
-      
-      users[donorIndex] = donor;
-      localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
-      return donor;
-    }
-    return null;
-  },
-  getPostings: (): FoodPosting[] => {
-    try {
-        const data = localStorage.getItem(STORAGE_KEY_POSTINGS);
-        return data ? JSON.parse(data) : [];
-    } catch {
-        return [];
-    }
-  },
-  getMessages: (postingId: string): ChatMessage[] => {
-    try {
-        const allChats = JSON.parse(localStorage.getItem(STORAGE_KEY_CHATS) || '{}');
-        return allChats[postingId] || [];
-    } catch {
-        return [];
-    }
-  },
-  saveMessage: (postingId: string, message: ChatMessage) => {
-    const allChats = JSON.parse(localStorage.getItem(STORAGE_KEY_CHATS) || '{}');
-    if (!allChats[postingId]) allChats[postingId] = [];
-    allChats[postingId].push(message);
-    localStorage.setItem(STORAGE_KEY_CHATS, JSON.stringify(allChats));
-
-    // Create Notification for recipients
-    const postings = storage.getPostings();
-    const posting = postings.find(p => p.id === postingId);
-    if (posting) {
-        const recipients = [posting.donorId, posting.volunteerId, posting.orphanageId]
-            .filter(id => id && id !== message.senderId); // Exclude sender and undefined
-        
-        const uniqueRecipients = [...new Set(recipients)];
-        
-        uniqueRecipients.forEach(userId => {
-            if (!userId) return;
-            const user = storage.getUser(userId);
-            if (shouldNotify(user, 'messages')) {
-                storage.createNotification(
-                    userId,
-                    `New message from ${message.senderName}: ${message.text.substring(0, 30)}${message.text.length > 30 ? '...' : ''}`,
-                    'INFO'
-                );
-            }
-        });
-    }
-  },
-  getNotifications: (userId: string): Notification[] => {
-    const all = getStoredNotifications();
-    return all
-      .filter(n => n.userId === userId)
-      .sort((a, b) => b.createdAt - a.createdAt);
-  },
-  markNotificationRead: (notificationId: string) => {
-    const all = getStoredNotifications();
-    const updated = all.map(n => n.id === notificationId ? { ...n, isRead: true } : n);
-    saveStoredNotifications(updated);
-  },
-  markAllNotificationsRead: (userId: string) => {
-    const all = getStoredNotifications();
-    const updated = all.map(n => n.userId === userId ? { ...n, isRead: true } : n);
-    saveStoredNotifications(updated);
-  },
-  createNotification: (userId: string, message: string, type: 'INFO' | 'ACTION' | 'SUCCESS') => {
-    const notifications = getStoredNotifications();
-    notifications.push({
-      id: Math.random().toString(36).substr(2, 9),
-      userId,
-      message,
-      isRead: false,
-      createdAt: Date.now(),
-      type
-    });
-    saveStoredNotifications(notifications);
-  },
-  savePosting: (posting: FoodPosting) => {
-    const postings = storage.getPostings();
-    postings.unshift(posting);
-    localStorage.setItem(STORAGE_KEY_POSTINGS, JSON.stringify(postings));
-
-    const users = storage.getUsers();
-    const notifications = getStoredNotifications();
-    
-    users.forEach(u => {
-      if (u.role === UserRole.VOLUNTEER) {
-        // Check Notification Preferences
-        if (!shouldNotify(u, 'newPostings')) return;
-
-        let isNearby = false;
-        let distanceText = '';
-
-        if (u.address?.lat && u.address?.lng && posting.location.lat && posting.location.lng) {
-          const distance = calculateDistance(
-            posting.location.lat,
-            posting.location.lng,
-            u.address.lat,
-            u.address.lng
-          );
-
-          if (distance <= 10) {
-            isNearby = true;
-            distanceText = ` (${distance.toFixed(1)}km away)`;
-          }
-        }
-
-        if (isNearby) {
-          notifications.push({
-            id: Math.random().toString(36).substr(2, 9),
-            userId: u.id,
-            message: `New food donation: ${posting.foodName} near ${posting.location.landmark || posting.location.pincode}${distanceText}`,
-            isRead: false,
-            createdAt: Date.now(),
-            type: 'INFO'
-          });
-        }
-      }
-    });
-    saveStoredNotifications(notifications);
-  },
-  updatePosting: (id: string, updates: Partial<FoodPosting>) => {
-    const postings = storage.getPostings();
-    const index = postings.findIndex(p => p.id === id);
-    if (index !== -1) {
-      const oldPosting = postings[index];
-      const newPosting = { ...oldPosting, ...updates };
-      postings[index] = newPosting;
-      localStorage.setItem(STORAGE_KEY_POSTINGS, JSON.stringify(postings));
-
-      const notifications = getStoredNotifications();
-      const users = storage.getUsers();
-      const getUserObj = (uid: string) => users.find(u => u.id === uid);
-
-      // --- STATUS TRANSITIONS ---
-
-      // 1. Volunteer submits PICKUP proof -> Notify Donor (Action Required)
-      if (oldPosting.status !== FoodStatus.PICKUP_VERIFICATION_PENDING && newPosting.status === FoodStatus.PICKUP_VERIFICATION_PENDING) {
-         if (shouldNotify(getUserObj(newPosting.donorId), 'missionUpdates')) {
-             notifications.push({
-                id: Math.random().toString(36).substr(2, 9),
-                userId: newPosting.donorId,
-                message: `ACTION REQUIRED: Volunteer ${newPosting.volunteerName} has uploaded a pickup proof for "${newPosting.foodName}". Please verify now.`,
-                isRead: false,
-                createdAt: Date.now(),
-                type: 'ACTION'
-             });
-         }
-      }
-
-      // 2. Donor Approves PICKUP -> Notify Volunteer (Success)
-      if (oldPosting.status === FoodStatus.PICKUP_VERIFICATION_PENDING && newPosting.status === FoodStatus.IN_TRANSIT) {
-         if (newPosting.volunteerId && shouldNotify(getUserObj(newPosting.volunteerId), 'missionUpdates')) {
-             notifications.push({
-                id: Math.random().toString(36).substr(2, 9),
-                userId: newPosting.volunteerId,
-                message: `Pickup Approved! You can now proceed to deliver "${newPosting.foodName}".`,
-                isRead: false,
-                createdAt: Date.now(),
-                type: 'SUCCESS'
-             });
-         }
-      }
-
-      // 3. Status Reverted from PICKUP to REQUESTED (Rejection or Retraction)
-      if (oldPosting.status === FoodStatus.PICKUP_VERIFICATION_PENDING && newPosting.status === FoodStatus.REQUESTED) {
-          if (newPosting.volunteerId && newPosting.volunteerId === oldPosting.volunteerId) {
-             if (shouldNotify(getUserObj(newPosting.donorId), 'missionUpdates')) {
-                 notifications.push({
-                    id: Math.random().toString(36).substr(2, 9),
-                    userId: newPosting.donorId,
-                    message: `Update: Volunteer ${newPosting.volunteerName} has retracted their pickup proof for "${newPosting.foodName}" to re-verify.`,
-                    isRead: false,
-                    createdAt: Date.now(),
-                    type: 'INFO'
-                 });
-             }
-          }
-          else if (oldPosting.volunteerId && shouldNotify(getUserObj(oldPosting.volunteerId), 'missionUpdates')) {
-             notifications.push({
-                id: Math.random().toString(36).substr(2, 9),
-                userId: oldPosting.volunteerId,
-                message: `Pickup Verification Rejected for "${newPosting.foodName}". Please check the image or contact the donor.`,
-                isRead: false,
-                createdAt: Date.now(),
-                type: 'INFO'
-             });
-          }
-      }
-
-      // 4. Volunteer submits DELIVERY proof -> Notify Requester (Action Required)
-      if (oldPosting.status !== FoodStatus.DELIVERY_VERIFICATION_PENDING && newPosting.status === FoodStatus.DELIVERY_VERIFICATION_PENDING) {
-          if (newPosting.orphanageId && shouldNotify(getUserObj(newPosting.orphanageId), 'missionUpdates')) {
-              notifications.push({
-                  id: Math.random().toString(36).substr(2, 9),
-                  userId: newPosting.orphanageId,
-                  message: `ACTION REQUIRED: Delivery proof uploaded for "${newPosting.foodName}". Please verify to confirm receipt.`,
-                  isRead: false,
-                  createdAt: Date.now(),
-                  type: 'ACTION'
-              });
-          }
-      }
-
-      // 5. Status Reverted from DELIVERY to IN_TRANSIT (Rejection)
-      if (oldPosting.status === FoodStatus.DELIVERY_VERIFICATION_PENDING && newPosting.status === FoodStatus.IN_TRANSIT) {
-           if (newPosting.volunteerId && shouldNotify(getUserObj(newPosting.volunteerId), 'missionUpdates')) {
-              notifications.push({
-                  id: Math.random().toString(36).substr(2, 9),
-                  userId: newPosting.volunteerId,
-                  message: `Delivery Verification Rejected for "${newPosting.foodName}". Please re-upload a clear image or contact the requester.`,
-                  isRead: false,
-                  createdAt: Date.now(),
-                  type: 'INFO'
-              });
-           }
-      }
-
-      // 6. Final Delivery Approval (Impact Scores & Success)
-      if (oldPosting.status !== FoodStatus.DELIVERED && newPosting.status === FoodStatus.DELIVERED) {
-         const donorIndex = users.findIndex(u => u.id === newPosting.donorId);
-         const volunteerIndex = users.findIndex(u => u.id === newPosting.volunteerId);
-         
-         if (donorIndex !== -1) users[donorIndex].impactScore = (users[donorIndex].impactScore || 0) + 1;
-         if (volunteerIndex !== -1) users[volunteerIndex].impactScore = (users[volunteerIndex].impactScore || 0) + 1;
-         
-         localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
-         
-         // Notify Donor
-         if (shouldNotify(getUserObj(newPosting.donorId), 'missionUpdates')) {
-             notifications.push({
-                id: Math.random().toString(36).substr(2, 9),
-                userId: newPosting.donorId,
-                message: `Donation Complete: "${newPosting.foodName}" has been successfully delivered and verified!`,
-                isRead: false,
-                createdAt: Date.now(),
-                type: 'SUCCESS'
-             });
-         }
-
-         // Notify Volunteer
-         if (newPosting.volunteerId && shouldNotify(getUserObj(newPosting.volunteerId), 'missionUpdates')) {
-            notifications.push({
-                id: Math.random().toString(36).substr(2, 9),
-                userId: newPosting.volunteerId,
-                message: `Mission Accomplished! "${newPosting.foodName}" delivery verified.`,
-                isRead: false,
-                createdAt: Date.now(),
-                type: 'SUCCESS'
-            });
-         }
-
-         // Notify Requester
-         if (newPosting.orphanageId && shouldNotify(getUserObj(newPosting.orphanageId), 'missionUpdates')) {
-             notifications.push({
-                 id: Math.random().toString(36).substr(2, 9),
-                 userId: newPosting.orphanageId,
-                 message: `Enjoy your meal! "${newPosting.foodName}" is officially marked as delivered.`,
-                 isRead: false,
-                 createdAt: Date.now(),
-                 type: 'SUCCESS'
-             });
-         }
-      }
-
-      // 7. General PickedUp Flag (Legacy or supplementary check)
-      if (!oldPosting.isPickedUp && updates.isPickedUp) {
-         if (newPosting.orphanageId && shouldNotify(getUserObj(newPosting.orphanageId), 'missionUpdates')) {
-             notifications.push({
-              id: Math.random().toString(36).substr(2, 9),
-              userId: newPosting.orphanageId,
-              message: `Status Update: ${newPosting.volunteerName} has picked up "${newPosting.foodName}"!`,
-              isRead: false, createdAt: Date.now(), type: 'INFO'
-            });
-         }
-      }
-
-      saveStoredNotifications(notifications);
-      return newPosting;
-    }
-    return null;
-  },
-  deletePosting: (id: string) => {
-    let postings = storage.getPostings();
-    const postingToDelete = postings.find(p => p.id === id);
-    
-    // Notify relevant parties before deletion
-    if (postingToDelete) {
-      const notifications = getStoredNotifications();
-      const users = storage.getUsers();
-      const getUserObj = (uid: string) => users.find(u => u.id === uid);
-      
-      // Notify Requester
-      if (postingToDelete.orphanageId && shouldNotify(getUserObj(postingToDelete.orphanageId), 'missionUpdates')) {
-        notifications.push({
-          id: Math.random().toString(36).substr(2, 9),
-          userId: postingToDelete.orphanageId,
-          message: `The donation "${postingToDelete.foodName}" has been cancelled by the donor.`,
-          isRead: false,
-          createdAt: Date.now(),
-          type: 'INFO'
-        });
-      }
-      
-      // Notify Volunteer
-      if (postingToDelete.volunteerId && shouldNotify(getUserObj(postingToDelete.volunteerId), 'missionUpdates')) {
-        notifications.push({
-          id: Math.random().toString(36).substr(2, 9),
-          userId: postingToDelete.volunteerId,
-          message: `Mission Aborted: The donation "${postingToDelete.foodName}" has been cancelled by the donor.`,
-          isRead: false,
-          createdAt: Date.now(),
-          type: 'INFO'
-        });
-      }
-      
-      saveStoredNotifications(notifications);
-    }
-
-    postings = postings.filter(p => p.id !== id);
-    localStorage.setItem(STORAGE_KEY_POSTINGS, JSON.stringify(postings));
-  },
-  addVolunteerRating: (postingId: string, rating: Rating) => {
-    const postings = storage.getPostings();
-    const pIndex = postings.findIndex(p => p.id === postingId);
-    
-    if (pIndex !== -1) {
-      const posting = postings[pIndex];
-      // 1. Add rating to posting
-      const newRatings = [...(posting.ratings || []), rating];
-      posting.ratings = newRatings;
-      postings[pIndex] = posting;
-      localStorage.setItem(STORAGE_KEY_POSTINGS, JSON.stringify(postings));
-
-      // 2. Update Volunteer Stats
-      if (posting.volunteerId) {
-        const users = storage.getUsers();
-        const vIndex = users.findIndex(u => u.id === posting.volunteerId);
-        if (vIndex !== -1) {
-          const volunteer = users[vIndex];
-          const currentCount = volunteer.ratingsCount || 0;
-          const currentAvg = volunteer.averageRating || 0;
-          
-          // Calculate new average
-          const newCount = currentCount + 1;
-          const newAvg = ((currentAvg * currentCount) + rating.rating) / newCount;
-          
-          volunteer.ratingsCount = newCount;
-          volunteer.averageRating = newAvg;
-          
-          users[vIndex] = volunteer;
-          localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
-          
-          // Notify Volunteer if prefs allow
-          if (shouldNotify(volunteer, 'missionUpdates')) {
-              storage.createNotification(
-                 volunteer.id,
-                 `You received a ${rating.rating}-star rating for delivering ${posting.foodName}!`,
-                 'SUCCESS'
-              );
-          }
-        }
-      }
-      return posting;
-    }
-    return null;
+    await setDoc(doc(db, 'notifications', n.id), n);
   }
 };

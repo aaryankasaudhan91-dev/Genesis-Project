@@ -11,7 +11,7 @@ const faqs = [
     category: 'General',
     questions: [
       { q: "What is MEALers connect?", a: "MEALers connect is a platform that bridges the gap between food donors (restaurants, events, individuals) and those in need (orphanages, shelters), facilitated by volunteer delivery partners." },
-      { q: "Is this service free?", a: "Yes, the platform is completely free to use for donors, volunteers, and requesters. Our mission is to reduce food waste and hunger." },
+      { q: "Is this service free?", a: "Yes, the platform is completely free to use for volunteers, and requesters. But for donor they have to pay 5 rupees as platform fee for donation. Our mission is to reduce food waste and hunger" },
       { q: "Is my data safe?", a: "We prioritize user privacy and only share necessary location and contact details during active food rescue missions." }
     ]
   },
