@@ -53,13 +53,11 @@ export interface User {
   // Volunteer Specific
   volunteerCategory?: 'Student' | 'Individual';
   volunteerIdType?: string;
-  isVerified?: boolean; // Basic verified flag
+  isVerified?: boolean; // Generic verified flag for Volunteer & Donor
 
   // Donor Specific
   donorType?: 'Individual' | 'Restaurant' | 'Corporate' | 'Event';
-  taxId?: string; // PAN or Tax ID
-  isTaxVerified?: boolean;
-
+  
   // Requester (NGO/Orphanage) Specific Verification
   requesterType?: 'Orphanage' | 'OldAgeHome' | 'NGO' | 'Other';
   verificationStatus?: 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED';
