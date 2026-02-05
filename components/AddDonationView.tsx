@@ -12,7 +12,7 @@ interface AddDonationViewProps {
   user: User;
   initialType?: DonationType;
   onBack: () => void;
-  onSuccess: () => void;
+  onSuccess: (posting?: FoodPosting) => void;
 }
 
 const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = 'FOOD', onBack, onSuccess }) => {
@@ -47,9 +47,10 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
   const [lng, setLng] = useState<number | undefined>(undefined);
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
 
-  // Payment State
+  // Payment & Upload State
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -228,13 +229,15 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
       setShowPaymentModal(true); 
   };
 
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = async () => {
+    setIsUploading(true);
     const newPost: FoodPosting = { 
         id: Math.random().toString(36).substr(2, 9), 
         donationType, 
         donorId: user.id, 
         donorName: user.name || 'Donor', 
-        donorOrg: user.orgName, 
+        donorOrg: user.orgName,
+        isDonorVerified: user.isVerified || false,
         foodName, 
         description: foodDescription, 
         quantity: `${quantityNum} ${unit}`, 
@@ -247,10 +250,15 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
         createdAt: Date.now(), 
         platformFeePaid: true 
     };
-    storage.savePosting(newPost);
+    
+    // Simulate slight delay for visual effect (and actual network wait)
+    await new Promise(r => setTimeout(r, 1500));
+    await storage.savePosting(newPost);
+    
+    setIsUploading(false);
     setShowPaymentModal(false);
     setIsProcessingPayment(false);
-    onSuccess();
+    onSuccess(newPost);
   };
 
   return (
@@ -422,7 +430,8 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
             <PaymentModal 
                 amount={5} 
                 onSuccess={handlePaymentSuccess} 
-                onCancel={() => { setShowPaymentModal(false); setIsProcessingPayment(false); }} 
+                onCancel={() => { setShowPaymentModal(false); setIsProcessingPayment(false); }}
+                isUploading={isUploading} 
             />
         )}
     </div>

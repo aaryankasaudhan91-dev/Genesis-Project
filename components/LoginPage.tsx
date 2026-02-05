@@ -563,16 +563,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
               }
               await updatePassword(auth.currentUser, newPassword);
           } else if (recoveryMethod === 'EMAIL') {
-              // In Simulation Mode or Client-Side Email OTP, we update local storage data.
-              // Note: If using real Firebase, you typically need to use `sendPasswordResetEmail` instead of OTP.
-              // This block accommodates the "OTP for Email" requirement by updating the local record
-              // and assuming the Firebase wrapper or mock handles the rest.
               const users = await storage.getUsers();
               const user = users.find(u => u.email.toLowerCase() === recoveryInput.toLowerCase());
               if (user) {
-                  // If we could determine the user ID, we'd update Firestore.
-                  // For the simulation, we'll pretend it's updated.
-                  // In a real implementation with this flow, you'd need a Cloud Function.
                   await storage.updateUser(user.id, { password: newPassword }); 
               }
           }
@@ -603,8 +596,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
         if (!existingUser) {
             setRegEmail(loginEmail);
+            setRegPassword(loginPassword); // Auto-fill password for easier registration
             switchView('REGISTER');
-            setTimeout(() => setError("Profile not found locally. Please re-enter details."), 600);
+            setTimeout(() => setError("Profile not found locally. Please complete details."), 600);
             setLoading(false);
             return;
         }
@@ -655,7 +649,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             setLoading(false);
             return;
         }
-        isVerified = true; // Auto-verified by AI for Volunteer
+        isVerified = true;
     }
 
     if (regRole === UserRole.DONOR) {
@@ -664,7 +658,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             setLoading(false);
             return;
         }
-        // Verification for Donors now relies on OTP
         if (wantTaxBenefits) {
             if (!isPhoneVerified || !isEmailVerified) {
                 setError("Please complete both Phone and Email verification for verified status.");
@@ -681,7 +674,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             setLoading(false);
             return;
         }
-        // Check mandatory docs for requester
         if (!reqDocuments.org_pan || !reqDocStatus.org_pan?.verified) {
             setError("Valid Organization PAN is required.");
             setLoading(false);
@@ -692,30 +684,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             setLoading(false);
             return;
         }
-        verificationStatus = 'VERIFIED'; // If mandatory checks pass via AI
+        verificationStatus = 'VERIFIED';
     }
 
-    try {
-        let firebaseUser;
-
-        if (auth && auth.currentUser && auth.currentUser.email === regEmail) {
-            // Already logged in (maybe via phone link flow, but unlikely with email match check)
-            firebaseUser = auth.currentUser;
-            await updateProfile(firebaseUser, {
-                displayName: regName,
-                photoURL: regProfilePic
-            });
-        } else {
-            const userCredential = await createUserWithEmailAndPassword(auth, regEmail, regPassword);
-            firebaseUser = userCredential.user;
-            await updateProfile(firebaseUser, {
-                displayName: regName,
-                photoURL: regProfilePic
-            });
-        }
-
-        const newUser: User = {
-            id: firebaseUser.uid,
+    // Helper to create user data object
+    const createUserData = (uid: string): User => {
+        return {
+            id: uid,
             name: regName,
             email: regEmail,
             contactNo: regPhone,
@@ -733,13 +708,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             impactScore: 0,
             averageRating: 5.0,
             ratingsCount: 0,
-            // Volunteer Fields
             volunteerCategory: regRole === UserRole.VOLUNTEER ? volCategory : undefined,
             volunteerIdType: regRole === UserRole.VOLUNTEER ? volIdType : undefined,
             isVerified: isVerified,
-            // Donor Fields
             donorType: regRole === UserRole.DONOR ? donorType : undefined,
-            // Requester Fields
             requesterType: regRole === UserRole.REQUESTER ? requesterType : undefined,
             verificationStatus: regRole === UserRole.REQUESTER ? verificationStatus : undefined,
             documentUrls: regRole === UserRole.REQUESTER ? {
@@ -751,20 +723,63 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 facilityVideo: reqDocuments.facility_video
             } : undefined
         };
+    };
 
+    try {
+        let firebaseUser;
+
+        if (auth && auth.currentUser && auth.currentUser.email === regEmail) {
+            firebaseUser = auth.currentUser;
+            await updateProfile(firebaseUser, {
+                displayName: regName,
+                photoURL: regProfilePic
+            });
+        } else {
+            const userCredential = await createUserWithEmailAndPassword(auth, regEmail, regPassword);
+            firebaseUser = userCredential.user;
+            await updateProfile(firebaseUser, {
+                displayName: regName,
+                photoURL: regProfilePic
+            });
+        }
+
+        const newUser = createUserData(firebaseUser.uid);
         storage.saveUser(newUser);
         onLogin(newUser);
         setLoading(false);
 
     } catch (err: any) {
-        setLoading(false);
         if (err.code === 'auth/email-already-in-use') {
-            setError("Email already registered. Please login.");
+            // DIRECT LOGIN HANDLER
+            // If email is already registered, try to sign in and proceed
+            try {
+                const userCredential = await signInWithEmailAndPassword(auth, regEmail, regPassword);
+                const firebaseUser = userCredential.user;
+                
+                const users = await storage.getUsers();
+                const existingUser = users.find(u => u.id === firebaseUser.uid);
+                
+                if (existingUser) {
+                    onLogin(existingUser);
+                } else {
+                    // Create profile if missing
+                    const newUser = createUserData(firebaseUser.uid);
+                    await storage.saveUser(newUser);
+                    onLogin(newUser);
+                }
+                setLoading(false);
+            } catch (loginErr) {
+                setLoading(false);
+                setError("Email registered, but password incorrect. Please try again or use Forgot Password.");
+            }
         } else {
+            setLoading(false);
             setError(err.message || "Registration failed.");
         }
     }
   };
+
+  // ... (rest of render logic remains same)
 
   const renderPasswordToggle = (show: boolean, setShow: (val: boolean) => void) => (
       <button
@@ -1213,7 +1228,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                                 </div>
                             )}
 
-                            {/* DONOR Verification Logic (Replaced PAN with OTP) */}
+                            {/* DONOR Verification Logic */}
                             {regRole === UserRole.DONOR && (
                                 <div className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4">

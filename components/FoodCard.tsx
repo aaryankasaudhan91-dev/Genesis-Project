@@ -156,29 +156,27 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
       }
 
       if (targetId && targetName) {
-          // We trigger the parent handler which will likely open a modal
-          // For now, we assume the parent handles the modal opening based on ID
-          // But since the modal is likely at the App level, we need a way to pass this info up.
-          // The current prop signature is (postingId, targetId, targetName, rating, feedback).
-          // Wait, the modal is shown in App.tsx based on state? 
-          // Actually, App.tsx needs to know we want to rate someone.
-          // Let's assume onRateUser opens the modal.
-          // We can't pass rating/feedback yet because we need the UI.
-          // So onRateUser should probably just take the context and open the modal.
-          // Let's adapt: onRateUser(postingId, targetId, targetName) -> App opens modal -> User submits -> App calls storage.
-          
-          // However, the interface defined in props is: 
-          // onRateUser?: (postingId: string, targetId: string, targetName: string, rating: number, feedback: string) => void;
-          // This implies the rating happens HERE.
-          // BUT, RatingModal is in App.tsx usually or we can render it here.
-          // Ideally, FoodCard shouldn't manage the modal state if it's reused.
-          // Let's invoke a callback that signals "I want to rate X".
-          // For simplicity in this structure, let's signal the parent with 0 rating to open modal?
-          // Or better, let's just use the existing pattern if possible.
-          // Ah, I can't change App.tsx logic from here directly.
-          // I will use a special signal or assume App.tsx passes a handler that opens the modal.
-          // Let's pass dummy rating 0 to indicate "Open Modal".
           onRateUser(posting.id, targetId, targetName, 0, "");
+      }
+  };
+
+  const handleShare = async () => {
+      const shareData = {
+          title: `Food Rescue: ${posting.foodName}`,
+          text: `Check out this donation on MEALers Connect: ${posting.foodName} (${posting.quantity}) by ${posting.donorOrg || posting.donorName}.`,
+          url: window.location.href
+      };
+
+      if (navigator.share) {
+          try {
+              await navigator.share(shareData);
+          } catch (err) {
+              console.log('Share dismissed');
+          }
+      } else {
+          // Fallback
+          navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}`);
+          alert('Donation details copied to clipboard!');
       }
   };
 
@@ -232,7 +230,21 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
         </div>
         <div className="absolute bottom-4 left-4 right-4 text-white">
             <h3 className="font-black text-xl leading-tight mb-1 shadow-black/10 drop-shadow-md">{posting.foodName}</h3>
-            <p className="text-xs font-medium opacity-90 truncate">{posting.donorOrg || posting.donorName}</p>
+            
+            <div className="flex items-center gap-2 mt-1">
+                <p className="text-xs font-medium opacity-90 truncate max-w-[150px]">{posting.donorOrg || posting.donorName}</p>
+                {posting.isDonorVerified ? (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-500/20 border border-blue-400/30 backdrop-blur-md text-blue-50 text-[9px] font-black uppercase tracking-wide">
+                        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/></svg>
+                        Verified
+                    </span>
+                ) : (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-600/90 border border-rose-500/50 backdrop-blur-md text-white text-[9px] font-black uppercase tracking-wide shadow-sm animate-pulse">
+                        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                        Not Verified
+                    </span>
+                )}
+            </div>
         </div>
       </div>
 
@@ -279,7 +291,10 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
               
               {/* Cancel Button for Donors - Only if not yet picked up (Available or Requested) */}
               {user.role === UserRole.DONOR && posting.donorId === user.id && (posting.status === FoodStatus.AVAILABLE || posting.status === FoodStatus.REQUESTED) && (
-                  <button onClick={() => setShowCancelConfirmation(true)} className="w-full py-3 bg-white border border-rose-100 text-rose-500 hover:bg-rose-50 rounded-xl font-black text-xs uppercase tracking-widest transition-all">{t('btn_cancel')}</button>
+                  <button onClick={() => setShowCancelConfirmation(true)} className="w-full py-3 bg-white border border-rose-100 text-rose-500 hover:bg-rose-50 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      {t('btn_cancel')}
+                  </button>
               )}
               
               {/* Tracking for Requester */}
@@ -305,6 +320,13 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
               
               {/* Chat Button for Volunteers - Active Missions */}
               {user.role === UserRole.VOLUNTEER && posting.volunteerId === user.id && posting.status !== FoodStatus.DELIVERED && (
+                  <button onClick={() => onChatClick?.(posting.id)} className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2">
+                      <span className="text-lg">💬</span> {t('btn_chat')}
+                  </button>
+              )}
+
+              {/* Chat Button for Donors - Active Missions */}
+              {user.role === UserRole.DONOR && posting.donorId === user.id && posting.status !== FoodStatus.AVAILABLE && posting.status !== FoodStatus.DELIVERED && (
                   <button onClick={() => onChatClick?.(posting.id)} className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2">
                       <span className="text-lg">💬</span> {t('btn_chat')}
                   </button>
@@ -372,7 +394,16 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
           </div>
       </div>
       
-      <button onClick={handleTTS} className={`absolute top-4 right-4 z-10 p-2 rounded-full backdrop-blur-md transition-all ${isPlaying ? 'bg-white text-emerald-600' : 'bg-black/20 text-white hover:bg-white hover:text-slate-900'}`}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg></button>
+      {/* Top Action Buttons (TTS & Share) */}
+      <div className="absolute top-4 right-4 z-10 flex gap-2">
+          <button onClick={handleShare} className="p-2 rounded-full backdrop-blur-md transition-all bg-black/20 text-white hover:bg-white hover:text-slate-900 shadow-sm" title="Share Donation">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+          </button>
+          <button onClick={handleTTS} className={`p-2 rounded-full backdrop-blur-md transition-all shadow-sm ${isPlaying ? 'bg-white text-emerald-600' : 'bg-black/20 text-white hover:bg-white hover:text-slate-900'}`} title="Listen">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+          </button>
+      </div>
+
       {onClose && <button onClick={onClose} className="absolute bottom-4 right-4 z-20 bg-white shadow-lg text-slate-800 p-2 rounded-full hover:scale-110 transition-transform"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>}
     </div>
 

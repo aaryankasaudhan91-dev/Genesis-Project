@@ -5,9 +5,10 @@ interface PaymentModalProps {
   amount: number;
   onSuccess: () => void;
   onCancel: () => void;
+  isUploading?: boolean;
 }
 
-const PaymentModal: React.FC<PaymentModalProps> = ({ amount, onSuccess, onCancel }) => {
+const PaymentModal: React.FC<PaymentModalProps> = ({ amount, onSuccess, onCancel, isUploading = false }) => {
   const [step, setStep] = useState<'METHOD' | 'PROCESSING' | 'SUCCESS'>('METHOD');
   const [activeTab, setActiveTab] = useState<'UPI' | 'CARD' | 'NETBANKING'>('UPI');
   
@@ -27,7 +28,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ amount, onSuccess, onCancel
     setStep('PROCESSING');
     setTimeout(() => {
       setStep('SUCCESS');
-      setTimeout(onSuccess, 2000);
+      // Trigger parent success handler after a short delay to show success tick
+      setTimeout(() => {
+          onSuccess();
+      }, 1500);
     }, 2500);
   };
 
@@ -258,11 +262,25 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ amount, onSuccess, onCancel
 
             {step === 'SUCCESS' && (
                 <div className="flex-1 flex flex-col items-center justify-center text-center animate-fade-in-up">
-                    <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-emerald-100 scale-110">
-                        <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
-                    </div>
-                    <h3 className="text-2xl font-black text-emerald-700 mb-2">Payment Successful!</h3>
-                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Txn ID: {Math.random().toString(36).substr(2, 9).toUpperCase()}</p>
+                    {isUploading ? (
+                        <>
+                            <div className="relative w-24 h-24 mb-6">
+                                <div className="absolute inset-0 border-4 border-slate-100 rounded-full"></div>
+                                <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                <div className="absolute inset-0 flex items-center justify-center text-3xl">☁️</div>
+                            </div>
+                            <h3 className="text-2xl font-black text-slate-800 mb-2">Finalizing Donation...</h3>
+                            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Uploading details securely</p>
+                        </>
+                    ) : (
+                        <>
+                            <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-emerald-100 scale-110">
+                                <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                            </div>
+                            <h3 className="text-2xl font-black text-emerald-700 mb-2">Payment Successful!</h3>
+                            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Txn ID: {Math.random().toString(36).substr(2, 9).toUpperCase()}</p>
+                        </>
+                    )}
                 </div>
             )}
         </div>

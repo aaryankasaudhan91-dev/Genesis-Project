@@ -100,6 +100,7 @@ export interface FoodPosting {
   donorId: string;
   donorName: string;
   donorOrg?: string;
+  isDonorVerified?: boolean; // New field for badge display
   foodName: string;
   description?: string;
   foodCategory?: string;
