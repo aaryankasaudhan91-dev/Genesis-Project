@@ -210,7 +210,10 @@ const App: React.FC = () => {
         else if (activeTab === 'history') return filtered.filter(p => p.donorId === user.id && p.status === FoodStatus.DELIVERED);
     } else if (user.role === UserRole.VOLUNTEER) {
         if (activeTab === 'opportunities') {
-            let opportunities = filtered.filter(p => (p.status === FoodStatus.AVAILABLE || (p.status === FoodStatus.REQUESTED && !p.volunteerId)));
+            // Volunteer sees items only after they have been REQUESTED by a Requester.
+            // Items that are still 'AVAILABLE' (posted by donor but not claimed) are not shown to volunteers yet.
+            let opportunities = filtered.filter(p => p.status === FoodStatus.REQUESTED && !p.volunteerId);
+            
             if (user.donationTypeFilter && user.donationTypeFilter !== 'ALL') {
                  opportunities = opportunities.filter(p => (p.donationType || 'FOOD') === user.donationTypeFilter);
             }
@@ -506,7 +509,9 @@ const App: React.FC = () => {
                 </div>
                 <h3 className="text-2xl font-black text-slate-800 mb-2 tracking-tight">{t('nothing_title')}</h3>
                 <p className="text-slate-500 font-medium max-w-xs mx-auto leading-relaxed mb-8">
-                    {user?.role === UserRole.DONOR ? t('nothing_desc_donor') : t('nothing_desc_other')}
+                    {user?.role === UserRole.DONOR ? t('nothing_desc_donor') : 
+                     user?.role === UserRole.VOLUNTEER && activeTab === 'opportunities' ? "No requests pending. Wait for a beneficiary to request food!" :
+                     t('nothing_desc_other')}
                 </p>
                 
                 {user?.role === UserRole.DONOR && activeTab === 'active' && (

@@ -96,7 +96,7 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
     const isAlreadyInterested = posting.interestedVolunteers?.some(v => v.userId === user.id);
     if (isAlreadyInterested) { alert("Already interested."); return; }
     onUpdate(posting.id, { interestedVolunteers: [...(posting.interestedVolunteers || []), { userId: user.id, userName: user.name || 'Volunteer' }] });
-    alert("Interest recorded!");
+    alert("Interest recorded! The donor will be notified.");
   };
 
   const handlePickupUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -281,10 +281,23 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
           <p className="text-sm text-slate-500 font-medium line-clamp-2 mb-4 flex-1">{posting.description}</p>
 
           <div className="mt-auto space-y-2">
+              {/* If REQUESTED, show destination info for volunteer */}
+              {user.role === UserRole.VOLUNTEER && posting.status === FoodStatus.REQUESTED && posting.orphanageName && (
+                  <div className="mb-3 p-3 bg-blue-50 rounded-xl border border-blue-100 flex items-center gap-3">
+                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-lg">🏠</div>
+                      <div>
+                          <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest">Destination</p>
+                          <p className="text-xs font-bold text-blue-900 line-clamp-1">{posting.orphanageName}</p>
+                      </div>
+                  </div>
+              )}
+
               {/* Primary Actions */}
-              {user.role === UserRole.VOLUNTEER && posting.status === FoodStatus.AVAILABLE && (
+              {/* Volunteer can only express interest if it is REQUESTED by a requester */}
+              {user.role === UserRole.VOLUNTEER && posting.status === FoodStatus.REQUESTED && !posting.volunteerId && (
                   <button onClick={handleExpressInterest} className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-emerald-200 transition-all">{t('btn_interest')}</button>
               )}
+              
               {user.role === UserRole.REQUESTER && posting.status === FoodStatus.AVAILABLE && (
                   <button onClick={initiateRequest} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-200 transition-all">{t('btn_request')}</button>
               )}
