@@ -6,9 +6,10 @@ interface PaymentModalProps {
   onSuccess: () => void;
   onCancel: () => void;
   isUploading?: boolean;
+  uploadProgress?: number;
 }
 
-const PaymentModal: React.FC<PaymentModalProps> = ({ amount, onSuccess, onCancel, isUploading = false }) => {
+const PaymentModal: React.FC<PaymentModalProps> = ({ amount, onSuccess, onCancel, isUploading = false, uploadProgress = 0 }) => {
   const [step, setStep] = useState<'METHOD' | 'PROCESSING' | 'SUCCESS'>('METHOD');
   const [activeTab, setActiveTab] = useState<'UPI' | 'CARD' | 'NETBANKING'>('UPI');
   
@@ -261,7 +262,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ amount, onSuccess, onCancel
             )}
 
             {step === 'SUCCESS' && (
-                <div className="flex-1 flex flex-col items-center justify-center text-center animate-fade-in-up">
+                <div className="flex-1 flex flex-col items-center justify-center text-center animate-fade-in-up w-full">
                     {isUploading ? (
                         <>
                             <div className="relative w-24 h-24 mb-6">
@@ -269,8 +270,17 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ amount, onSuccess, onCancel
                                 <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                                 <div className="absolute inset-0 flex items-center justify-center text-3xl">☁️</div>
                             </div>
-                            <h3 className="text-2xl font-black text-slate-800 mb-2">Finalizing Donation...</h3>
-                            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Uploading details securely</p>
+                            <h3 className="text-2xl font-black text-slate-800 mb-2">Publishing Donation...</h3>
+                            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-6">Making visible to community</p>
+                            
+                            {/* Upload Progress Bar */}
+                            <div className="w-full max-w-xs bg-slate-100 rounded-full h-2 mb-2 overflow-hidden">
+                                <div 
+                                    className="bg-blue-500 h-2 rounded-full transition-all duration-300 ease-out"
+                                    style={{ width: `${uploadProgress}%` }}
+                                ></div>
+                            </div>
+                            <p className="text-[10px] font-bold text-blue-600">{Math.round(uploadProgress)}% Uploaded</p>
                         </>
                     ) : (
                         <>

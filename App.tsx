@@ -15,6 +15,7 @@ import VerificationRequestModal from './components/VerificationRequestModal';
 import RoutePlannerModal from './components/RoutePlannerModal';
 import AddDonationView from './components/AddDonationView';
 import RatingModal from './components/RatingModal';
+import AboutCreators from './components/AboutCreators'; // Import new component
 import { User, UserRole, FoodPosting, FoodStatus, Notification, DonationType } from './types';
 import { storage, calculateDistance } from './services/storageService';
 import { optimizeMultiStopRoute, MultiStopRouteResult } from './services/geminiService';
@@ -30,7 +31,7 @@ const QUOTES = [
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
-  const [view, setView] = useState<'LOGIN' | 'DASHBOARD' | 'PROFILE' | 'SETTINGS' | 'CONTACT' | 'HELP' | 'ADD_DONATION'>('LOGIN');
+  const [view, setView] = useState<'LOGIN' | 'DASHBOARD' | 'PROFILE' | 'SETTINGS' | 'CONTACT' | 'HELP' | 'ADD_DONATION' | 'ABOUT'>('LOGIN');
   const [showSplash, setShowSplash] = useState(true);
   
   // Data State
@@ -559,7 +560,7 @@ const App: React.FC = () => {
   if (showSplash) return <SplashScreen />;
   if (!user || view === 'LOGIN') return <LoginPage onLogin={(user) => { setUser(user); setView('DASHBOARD'); }} />;
   if (view === 'PROFILE' && user) return <Layout user={user} onLogout={() => { if (auth) signOut(auth); setUser(null); setView('LOGIN'); }} onProfileClick={() => {}} onLogoClick={() => setView('DASHBOARD')} onContactClick={() => setView('CONTACT')} onHelpClick={() => setView('HELP')} onSettingsClick={() => setView('SETTINGS')} notifications={notifications}><ProfileView user={user} onUpdate={(updates) => { storage.updateUser(user.id, updates); setUser({ ...user, ...updates }); }} onBack={() => setView('DASHBOARD')} /></Layout>;
-  if (view === 'SETTINGS' && user) return <Layout user={user} onLogout={() => { if (auth) signOut(auth); setUser(null); setView('LOGIN'); }} onProfileClick={() => setView('PROFILE')} onLogoClick={() => setView('DASHBOARD')} onContactClick={() => setView('CONTACT')} onHelpClick={() => setView('HELP')} onSettingsClick={() => {}} notifications={notifications}><SettingsView user={user} onUpdate={(updates) => { storage.updateUser(user.id, updates); setUser({ ...user, ...updates }); }} onDelete={handleDeleteAccount} onBack={() => setView('DASHBOARD')} /></Layout>;
+  if (view === 'SETTINGS' && user) return <Layout user={user} onLogout={() => { if (auth) signOut(auth); setUser(null); setView('LOGIN'); }} onProfileClick={() => setView('PROFILE')} onLogoClick={() => setView('DASHBOARD')} onContactClick={() => setView('CONTACT')} onHelpClick={() => setView('HELP')} onSettingsClick={() => {}} notifications={notifications}><SettingsView user={user} onUpdate={(updates) => { storage.updateUser(user.id, updates); setUser({ ...user, ...updates }); }} onDelete={handleDeleteAccount} onBack={() => setView('DASHBOARD')} onAboutClick={() => setView('ABOUT')} /></Layout>;
   if (view === 'CONTACT' && user) return <Layout user={user} onLogout={() => { if (auth) signOut(auth); setUser(null); setView('LOGIN'); }} onProfileClick={() => setView('PROFILE')} onLogoClick={() => setView('DASHBOARD')} onContactClick={() => {}} onHelpClick={() => setView('HELP')} onSettingsClick={() => setView('SETTINGS')} notifications={notifications}><ContactUs user={user} onBack={() => setView('DASHBOARD')} /></Layout>;
   if (view === 'HELP' && user) return <Layout user={user} onLogout={() => { if (auth) signOut(auth); setUser(null); setView('LOGIN'); }} onProfileClick={() => setView('PROFILE')} onLogoClick={() => setView('DASHBOARD')} onContactClick={() => setView('CONTACT')} onHelpClick={() => {}} onSettingsClick={() => setView('SETTINGS')} notifications={notifications}><HelpFAQ onBack={() => setView('DASHBOARD')} onContact={() => setView('CONTACT')} /></Layout>;
   if (view === 'ADD_DONATION' && user) return <Layout user={user} onLogout={() => { if (auth) signOut(auth); setUser(null); setView('LOGIN'); }} onProfileClick={() => setView('PROFILE')} onLogoClick={() => setView('DASHBOARD')} onContactClick={() => setView('CONTACT')} onHelpClick={() => setView('HELP')} onSettingsClick={() => setView('SETTINGS')} notifications={notifications}><AddDonationView user={user} initialType={initialDonationType} onBack={() => setView('DASHBOARD')} onSuccess={(posting) => { 
@@ -570,6 +571,7 @@ const App: React.FC = () => {
       }
       refreshData(); 
   }} /></Layout>;
+  if (view === 'ABOUT' && user) return <Layout user={user} onLogout={() => { if (auth) signOut(auth); setUser(null); setView('LOGIN'); }} onProfileClick={() => setView('PROFILE')} onLogoClick={() => setView('DASHBOARD')} onContactClick={() => setView('CONTACT')} onHelpClick={() => setView('HELP')} onSettingsClick={() => setView('SETTINGS')} notifications={notifications}><AboutCreators onBack={() => setView('DASHBOARD')} /></Layout>;
 
   return (
     <Layout

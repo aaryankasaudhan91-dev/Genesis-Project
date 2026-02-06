@@ -7,9 +7,10 @@ interface SettingsViewProps {
   onUpdate: (updates: Partial<User>) => void;
   onDelete: () => void;
   onBack: () => void;
+  onAboutClick?: () => void; // Added prop
 }
 
-const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdate, onDelete, onBack }) => {
+const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdate, onDelete, onBack, onAboutClick }) => {
   const [prefs, setPrefs] = useState<NotificationPreferences>(user.notificationPreferences || { newPostings: true, missionUpdates: true, messages: true });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [language, setLanguage] = useState(user.language || 'English');
@@ -66,6 +67,22 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onUpdate, onDelete, o
       <button onClick={onBack} className="mb-8 flex items-center text-slate-400 font-bold text-xs uppercase tracking-widest hover:text-slate-800 transition-colors gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg> Back</button>
       
       <h2 className="text-3xl font-black text-slate-900 mb-8 tracking-tight">Settings</h2>
+
+      {/* About Creators Link */}
+      {onAboutClick && (
+        <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-[2rem] shadow-xl p-6 mb-8 text-white flex items-center justify-between cursor-pointer hover:scale-[1.01] transition-transform" onClick={onAboutClick}>
+            <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center text-2xl backdrop-blur-md">👨‍💻</div>
+                <div>
+                    <h3 className="text-lg font-black tracking-tight">Meet the Creators</h3>
+                    <p className="text-slate-400 text-xs font-medium">Akshay, Surbhi & Aaryan</p>
+                </div>
+            </div>
+            <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center backdrop-blur-md">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+            </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden mb-8">
           <div className="px-6 py-2">

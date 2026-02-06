@@ -85,15 +85,30 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
           postings.forEach(post => {
               if (post.location?.lat && post.location?.lng) {
                   const isClothes = post.donationType === 'CLOTHES';
-                  const isUrgent = new Date(post.expiryDate).getTime() - Date.now() < 12 * 60 * 60 * 1000;
+                  const isUrgent = post.status === FoodStatus.AVAILABLE && (new Date(post.expiryDate).getTime() - Date.now() < 12 * 60 * 60 * 1000);
+                  const isRequested = post.status !== FoodStatus.AVAILABLE;
                   
-                  let color, emoji;
+                  let color = '#10b981'; // Default Emerald (Food Available)
+                  let emoji = '🍱';
+                  let ringColor = 'rgba(16, 185, 129, 0.3)';
+
+                  // 1. Icon Selection
                   if (isClothes) {
-                      color = '#6366f1'; // Indigo for clothes
                       emoji = '👕';
                   } else {
-                      color = isUrgent ? '#f43f5e' : '#10b981'; // Rose/Emerald for food
                       emoji = post.foodCategory === 'Veg' ? '🥗' : '🍱';
+                  }
+
+                  // 2. Status/Color Logic
+                  if (isRequested) {
+                      color = '#f59e0b'; // Amber for Requested/Busy
+                      ringColor = 'rgba(245, 158, 11, 0.3)';
+                  } else if (isUrgent) {
+                      color = '#f43f5e'; // Rose for Urgent
+                      ringColor = 'rgba(244, 63, 94, 0.3)';
+                  } else if (isClothes) {
+                      color = '#6366f1'; // Indigo for Clothes Available
+                      ringColor = 'rgba(99, 102, 241, 0.3)';
                   }
 
                   const iconHtml = `
@@ -109,8 +124,14 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
                         border: 3px solid white;
                         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
                         transition: transform 0.2s;
+                        position: relative;
                     ">
                         <div style="transform: rotate(45deg); font-size: 20px;">${emoji}</div>
+                        ${isRequested ? `
+                            <div style="position: absolute; top: -4px; right: -4px; width: 14px; height: 14px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; transform: rotate(45deg);">
+                                <div style="width: 8px; height: 8px; background: #f59e0b; border-radius: 50%;"></div>
+                            </div>
+                        ` : ''}
                     </div>
                   `;
 
@@ -131,6 +152,11 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
                   popupDiv.style.minWidth = '220px';
                   popupDiv.style.cursor = 'pointer';
                   
+                  // Popup Badge Color
+                  const badgeBg = isRequested ? '#fef3c7' : (isClothes ? '#e0e7ff' : '#d1fae5');
+                  const badgeText = isRequested ? '#d97706' : (isClothes ? '#4338ca' : '#047857');
+                  const badgeLabel = isRequested ? 'Requested' : (isClothes ? 'Clothes' : 'Food');
+
                   popupDiv.innerHTML = `
                     <div style="display: flex; gap: 12px; align-items: start;">
                         ${post.imageUrl ? `
@@ -148,10 +174,10 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
                                 font-size: 9px; 
                                 font-weight: 800; 
                                 text-transform: uppercase; 
-                                background: ${isClothes ? '#e0e7ff' : '#d1fae5'}; 
-                                color: ${isClothes ? '#4338ca' : '#047857'};
+                                background: ${badgeBg}; 
+                                color: ${badgeText};
                             ">
-                                ${isClothes ? 'Clothes' : 'Food'}
+                                ${badgeLabel}
                             </span>
                         </div>
                     </div>
@@ -234,11 +260,15 @@ const PostingsMap: React.FC<PostingsMapProps> = ({ postings, onPostingSelect, us
                   </div>
                   <div className="flex items-center gap-2.5">
                       <div className="w-3 h-3 bg-emerald-500 rounded-full border border-white shadow-sm shrink-0"></div>
-                      <span className="text-[11px] font-bold text-slate-700">Food Donation</span>
+                      <span className="text-[11px] font-bold text-slate-700">Food (Available)</span>
                   </div>
                   <div className="flex items-center gap-2.5">
                       <div className="w-3 h-3 bg-indigo-500 rounded-full border border-white shadow-sm shrink-0"></div>
-                      <span className="text-[11px] font-bold text-slate-700">Clothes Donation</span>
+                      <span className="text-[11px] font-bold text-slate-700">Clothes (Available)</span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                      <div className="w-3 h-3 bg-amber-500 rounded-full border border-white shadow-sm shrink-0"></div>
+                      <span className="text-[11px] font-bold text-slate-700">Requested / Taken</span>
                   </div>
                   <div className="flex items-center gap-2.5">
                       <div className="w-3 h-3 bg-rose-500 rounded-full border border-white shadow-sm shrink-0"></div>
