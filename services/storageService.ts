@@ -1,19 +1,8 @@
 
-import { db } from './firebaseConfig';
-import { 
-  collection, getDocs, doc, setDoc, updateDoc, deleteDoc, 
-  onSnapshot, query, where, orderBy, getDoc 
-} from 'firebase/firestore';
 import { User, FoodPosting, ChatMessage, Rating, Notification } from '../types';
 
-// --- Fallback for Simulation Mode ---
-const isSim = !db;
-
-// In-memory storage for simulation
-let simUsers: User[] = [];
-let simPostings: FoodPosting[] = [];
-let simMessages: Record<string, ChatMessage[]> = {};
-let simNotifications: Notification[] = [];
+// API Base URL (Relative path for proxy)
+const API_URL = '/api';
 
 // Helper for distance calculation
 export const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -28,176 +17,95 @@ export const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2
   return R * c; // Distance in km
 };
 
+// Generic Fetch Helper
+const api = async <T>(endpoint: string, options?: RequestInit): Promise<T> => {
+    try {
+        const response = await fetch(`${API_URL}${endpoint}`, {
+            headers: { 'Content-Type': 'application/json' },
+            ...options
+        });
+        if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+        return await response.json();
+    } catch (error) {
+        console.error(`Error in ${endpoint}:`, error);
+        // Return empty array for list endpoints to prevent UI crashes
+        if (!options || options.method === 'GET') return [] as any;
+        throw error;
+    }
+};
+
 export const storage = {
   // --- USERS ---
   getUsers: async (): Promise<User[]> => {
-    if (isSim) return simUsers;
-    try {
-        const snap = await getDocs(collection(db, 'users'));
-        return snap.docs.map(d => d.data() as User);
-    } catch (e) { console.error(e); return []; }
+    return api<User[]>('/users');
   },
   getUser: async (id: string): Promise<User | undefined> => {
-    if (isSim) return simUsers.find(u => u.id === id);
-    try {
-        const snap = await getDoc(doc(db, 'users', id));
-        return snap.exists() ? snap.data() as User : undefined;
-    } catch (e) { console.error(e); return undefined; }
+    const user = await api<User>(`/users/${id}`);
+    return user || undefined;
   },
   saveUser: async (user: User) => {
-    if (isSim) {
-      const idx = simUsers.findIndex(u => u.id === user.id);
-      if (idx >= 0) simUsers[idx] = user; else simUsers.push(user);
-      return;
-    }
-    await setDoc(doc(db, 'users', user.id), user);
+    await api('/users', { method: 'POST', body: JSON.stringify(user) });
   },
   updateUser: async (id: string, updates: Partial<User>) => {
-    if (isSim) {
-      const u = simUsers.find(u => u.id === id);
-      if (u) Object.assign(u, updates);
-      return;
-    }
-    await updateDoc(doc(db, 'users', id), updates);
+    await api(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(updates) });
   },
   deleteUser: async (id: string) => {
-    if (isSim) {
-      simUsers = simUsers.filter(u => u.id !== id);
-      return;
-    }
-    await deleteDoc(doc(db, 'users', id));
+    await api(`/users/${id}`, { method: 'DELETE' });
   },
 
   // --- POSTINGS ---
   getPostings: async (): Promise<FoodPosting[]> => {
-    if (isSim) return simPostings;
-    try {
-        const snap = await getDocs(query(collection(db, 'postings'), orderBy('createdAt', 'desc')));
-        return snap.docs.map(d => d.data() as FoodPosting);
-    } catch (e) { console.error(e); return []; }
+    return api<FoodPosting[]>('/postings');
   },
   savePosting: async (posting: FoodPosting) => {
-    if (isSim) {
-      simPostings.push(posting);
-      return;
-    }
-    await setDoc(doc(db, 'postings', posting.id), posting);
+    await api('/postings', { method: 'POST', body: JSON.stringify(posting) });
   },
   updatePosting: async (id: string, updates: Partial<FoodPosting>) => {
-    if (isSim) {
-      const p = simPostings.find(p => p.id === id);
-      if (p) Object.assign(p, updates);
-      return;
-    }
-    await updateDoc(doc(db, 'postings', id), updates);
+    await api(`/postings/${id}`, { method: 'PATCH', body: JSON.stringify(updates) });
   },
   deletePosting: async (id: string) => {
-    if (isSim) {
-      simPostings = simPostings.filter(p => p.id !== id);
-      return;
-    }
-    await deleteDoc(doc(db, 'postings', id));
+    await api(`/postings/${id}`, { method: 'DELETE' });
   },
 
   // --- MESSAGES ---
+  // Note: For real-time chat in MongoDB without websockets, we use polling (handled in component)
+  // or a simple fetch here. The Component calls listenMessages which needs to return an unsubscribe.
   listenMessages: (postingId: string, callback: (msgs: ChatMessage[]) => void) => {
-    if (isSim) {
-      callback(simMessages[postingId] || []);
-      return () => {};
-    }
-    const q = query(collection(db, 'postings', postingId, 'messages'), orderBy('createdAt', 'asc'));
-    return onSnapshot(q, (snap) => {
-      callback(snap.docs.map(d => d.data() as ChatMessage));
-    });
+    const fetchMsgs = async () => {
+        const msgs = await api<ChatMessage[]>(`/messages/${postingId}`);
+        callback(msgs);
+    };
+    
+    fetchMsgs(); // Initial fetch
+    const interval = setInterval(fetchMsgs, 3000); // Poll every 3s
+    return () => clearInterval(interval);
   },
   saveMessage: async (postingId: string, message: ChatMessage) => {
-    if (isSim) {
-      if (!simMessages[postingId]) simMessages[postingId] = [];
-      simMessages[postingId].push(message);
-      return;
-    }
-    await setDoc(doc(db, 'postings', postingId, 'messages', message.id), message);
+    await api('/messages', { method: 'POST', body: JSON.stringify(message) });
   },
 
   // --- RATINGS ---
   submitUserRating: async (postingId: string, rating: Rating) => {
-    // 1. Update the Posting (store rating in array)
-    if (isSim) {
-        const posting = simPostings.find(p => p.id === postingId);
-        if (posting) {
-            if (!posting.ratings) posting.ratings = [];
-            posting.ratings.push(rating);
-        }
-        
-        // 2. Update the Target User (Aggregate stats)
-        const targetUser = simUsers.find(u => u.id === rating.targetId);
-        if (targetUser) {
-            const count = targetUser.ratingsCount || 0;
-            const avg = targetUser.averageRating || 5.0;
-            const newCount = count + 1;
-            const newAvg = ((avg * count) + rating.rating) / newCount;
-            targetUser.averageRating = newAvg;
-            targetUser.ratingsCount = newCount;
-        }
-        return;
-    }
-
-    // Real Firestore Implementation
-    // Note: In production, this should be a Transaction or Cloud Function to avoid race conditions
-    try {
-        // A. Update Posting
-        const postingRef = doc(db, 'postings', postingId);
-        const postingSnap = await getDoc(postingRef);
-        if (postingSnap.exists()) {
-            const currentRatings = postingSnap.data().ratings || [];
-            await updateDoc(postingRef, {
-                ratings: [...currentRatings, rating]
-            });
-        }
-
-        // B. Update Target User
-        const userRef = doc(db, 'users', rating.targetId);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-            const userData = userSnap.data() as User;
-            const count = userData.ratingsCount || 0;
-            const avg = userData.averageRating || 0;
-            
-            // If first rating, start fresh. Otherwise, weighted average.
-            const newCount = count + 1;
-            // Handle case where avg might be undefined or 0 initially
-            const currentTotal = (count > 0) ? avg * count : 0;
-            const newAvg = (currentTotal + rating.rating) / newCount;
-
-            await updateDoc(userRef, {
-                averageRating: newAvg,
-                ratingsCount: newCount
-            });
-        }
-    } catch (e) {
-        console.error("Error submitting rating:", e);
-    }
+    await api('/ratings', { 
+        method: 'POST', 
+        body: JSON.stringify({ postingId, ratingData: rating }) 
+    });
   },
 
   // --- NOTIFICATIONS ---
   listenNotifications: (userId: string, callback: (notifications: Notification[]) => void) => {
-    if (isSim) {
-      callback(simNotifications.filter(n => n.userId === userId));
-      return () => {};
-    }
-    const q = query(collection(db, 'notifications'), where('userId', '==', userId), orderBy('createdAt', 'desc'));
-    return onSnapshot(q, (snap) => {
-      callback(snap.docs.map(d => d.data() as Notification));
-    });
+    const fetchNotifs = async () => {
+        const notifs = await api<Notification[]>(`/notifications/${userId}`);
+        callback(notifs);
+    };
+    
+    fetchNotifs();
+    const interval = setInterval(fetchNotifs, 10000); // Poll every 10s
+    return () => clearInterval(interval);
   },
 
   getNotifications: async (userId: string): Promise<Notification[]> => {
-    if (isSim) return simNotifications.filter(n => n.userId === userId);
-    try {
-        const q = query(collection(db, 'notifications'), where('userId', '==', userId), orderBy('createdAt', 'desc'));
-        const snap = await getDocs(q);
-        return snap.docs.map(d => d.data() as Notification);
-    } catch (e) { console.error(e); return []; }
+    return api<Notification[]>(`/notifications/${userId}`);
   },
 
   createNotification: async (userId: string, message: string, type: 'INFO' | 'ACTION' | 'SUCCESS') => {
@@ -209,10 +117,6 @@ export const storage = {
         isRead: false,
         createdAt: Date.now()
     };
-    if (isSim) {
-        simNotifications.push(n);
-        return;
-    }
-    await setDoc(doc(db, 'notifications', n.id), n);
+    await api('/notifications', { method: 'POST', body: JSON.stringify(n) });
   }
 };
