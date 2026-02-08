@@ -381,15 +381,10 @@ const App: React.FC = () => {
                             <div className="flex gap-3 w-full md:w-auto">
                                 <button 
                                     onClick={() => handleStartDonation('FOOD')}
-                                    className="flex-1 md:flex-none py-4 px-6 bg-emerald-500 hover:bg-emerald-400 text-white rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-emerald-500/20 transition-all active:scale-95 flex items-center justify-center gap-2"
+                                    className="flex-1 md:flex-none py-4 px-8 bg-emerald-500 hover:bg-emerald-400 text-white rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-emerald-500/20 transition-all active:scale-95 flex items-center justify-center gap-2 group"
                                 >
-                                    <span>🍱</span> Donate Food
-                                </button>
-                                <button 
-                                    onClick={() => handleStartDonation('CLOTHES')}
-                                    className="flex-1 md:flex-none py-4 px-6 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-2xl font-bold text-xs uppercase tracking-widest backdrop-blur-md transition-all active:scale-95 flex items-center justify-center gap-2"
-                                >
-                                    <span>👕</span> Donate Clothes
+                                    <span className="text-lg group-hover:scale-110 transition-transform">➕</span> 
+                                    Add Donation
                                 </button>
                             </div>
                         )}

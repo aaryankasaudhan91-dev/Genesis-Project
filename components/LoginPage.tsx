@@ -450,10 +450,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           if (existingUser) {
               onLogin(existingUser);
           } else {
-              const cleanPhone = phoneNumber.replace(/^\+91/, '').replace(/\D/g, '');
-              setRegPhone(cleanPhone);
-              switchView('REGISTER');
-              setTimeout(() => setError("Phone verified! Please complete your profile."), 600);
+              setError("User doesn't exist. Try by sign up");
           }
           setLoading(false);
       } catch (err: any) {
@@ -595,18 +592,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         const existingUser = users.find(u => u.id === firebaseUser.uid || u.email === firebaseUser.email);
 
         if (!existingUser) {
-            setRegEmail(loginEmail);
-            setRegPassword(loginPassword); // Auto-fill password for easier registration
-            switchView('REGISTER');
-            setTimeout(() => setError("Profile not found locally. Please complete details."), 600);
             setLoading(false);
+            setError("User doesn't exist. Try by sign up");
             return;
         }
 
         onLogin(existingUser);
     } catch (err: any) {
         setLoading(false);
-        if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+        if (err.code === 'auth/user-not-found') {
+            setError("User doesn't exist. Try by sign up");
+        } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
             setError("Invalid email or password.");
         } else {
             setError("Login failed. Please try again.");
@@ -778,8 +774,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         }
     }
   };
-
-  // ... (rest of render logic remains same)
 
   const renderPasswordToggle = (show: boolean, setShow: (val: boolean) => void) => (
       <button

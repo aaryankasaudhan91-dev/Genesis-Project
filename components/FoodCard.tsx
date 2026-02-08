@@ -274,16 +274,19 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
       <div className="h-56 relative overflow-hidden bg-slate-50">
         {posting.imageUrl ? <img src={posting.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt={posting.foodName} /> : <div className="w-full h-full flex items-center justify-center text-4xl opacity-20">{isClothes ? '👕' : '🍲'}</div>}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent"></div>
-        <div className="absolute top-4 left-4 right-4 flex justify-between items-start">
-            <div className="bg-white/20 backdrop-blur-md px-2 py-1 rounded-lg border border-white/20 text-white text-[10px] font-bold shadow-sm flex items-center gap-1">
-                {isClothes ? '👕 Clothes' : '🍲 Food'}
-            </div>
+        <div className="absolute top-4 left-4 right-4 flex justify-end items-start">
             <div className="flex flex-col gap-2 items-end">
                 {renderStatus()}
                 {distanceText && <span className="text-[10px] font-bold text-white bg-black/30 px-2 py-1 rounded-md backdrop-blur-md">{distanceText} away</span>}
             </div>
         </div>
         <div className="absolute bottom-4 left-4 right-4 text-white">
+            <div className="mb-2">
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg backdrop-blur-md text-[10px] font-black uppercase tracking-wide shadow-sm border border-white/10 ${isClothes ? 'bg-indigo-500/90' : 'bg-emerald-500/90'}`}>
+                    <span className="text-sm">{isClothes ? '👕' : '🍲'}</span>
+                    {isClothes ? 'Clothes' : 'Food'}
+                </span>
+            </div>
             <h3 className="font-black text-xl leading-tight mb-1 shadow-black/10 drop-shadow-md">{posting.foodName}</h3>
             
             <div className="flex items-center gap-2 mt-1">
