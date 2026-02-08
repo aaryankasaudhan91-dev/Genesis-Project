@@ -52,11 +52,13 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
   const [showSafetyDetails, setShowSafetyDetails] = useState(false);
   const [isPickingUp, setIsPickingUp] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
   const [locationInsight, setLocationInsight] = useState<{text: string, sources: any[]} | null>(null);
   const [isLoadingInsight, setIsLoadingInsight] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pickupInputRef = useRef<HTMLInputElement>(null);
+  const receiptInputRef = useRef<HTMLInputElement>(null);
   
   const t = (key: string) => getTranslation(key, user?.language);
 
@@ -135,6 +137,22 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
     }
   };
 
+  const handleReceiptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file || !user) return;
+    setIsUploadingReceipt(true);
+    try {
+        const base64 = await resizeImage(file);
+        onUpdate(posting.id, {
+            donorReceiptImageUrl: base64
+        });
+        alert("Receipt uploaded successfully!");
+    } catch {
+        alert("Failed to upload receipt");
+    } finally {
+        setIsUploadingReceipt(false);
+    }
+  };
+
   const handleRateClick = () => {
       if (!onRateUser) return;
       
@@ -184,15 +202,52 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
       if (isPlaying) return;
       setIsPlaying(true);
       const text = `${isClothes ? 'Clothes' : 'Food'} Donation: ${posting.foodName}. ${posting.description || ''}`;
-      const audioData = await generateSpeech(text);
-      if (audioData) {
+      
+      try {
+          const audioData = await generateSpeech(text);
+          if (!audioData) throw new Error("No audio data received");
+
+          // Decode Base64
           const binaryString = atob(audioData);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-          const audio = new Audio(URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' })));
-          audio.onended = () => setIsPlaying(false);
-          audio.play();
-      } else { setIsPlaying(false); }
+          const len = binaryString.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+          }
+
+          // Create Audio Context (Gemini 2.5 Flash TTS is 24kHz)
+          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+          
+          // PCM Decoding (16-bit little-endian)
+          const dataInt16 = new Int16Array(bytes.buffer);
+          const numChannels = 1;
+          const frameCount = dataInt16.length;
+          
+          const audioBuffer = audioContext.createBuffer(numChannels, frameCount, 24000);
+          const channelData = audioBuffer.getChannelData(0);
+          
+          for (let i = 0; i < frameCount; i++) {
+              // Convert int16 to float32 [-1.0, 1.0]
+              channelData[i] = dataInt16[i] / 32768.0;
+          }
+
+          const source = audioContext.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(audioContext.destination);
+          source.onended = () => {
+              setIsPlaying(false);
+              // Clean up context to free resources
+              if (audioContext.state !== 'closed') {
+                  audioContext.close();
+              }
+          };
+          source.start();
+
+      } catch (e) {
+          console.error("TTS Playback Error:", e);
+          setIsPlaying(false);
+          alert("Could not play audio. Please try again.");
+      }
   };
 
   const handleLocationInsight = async () => {
@@ -383,6 +438,39 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
                   </div>
               )}
 
+              {/* DONOR RECEIPT UPLOAD (Only after Delivered) */}
+              {user.role === UserRole.DONOR && posting.status === FoodStatus.DELIVERED && posting.donorId === user.id && (
+                  <div className="mt-2 p-3 bg-slate-50 rounded-xl border border-slate-100 border-dashed">
+                      {!posting.donorReceiptImageUrl ? (
+                          <div className="relative">
+                              <input type="file" className="hidden" ref={receiptInputRef} onChange={handleReceiptUpload} accept="image/*" />
+                              <button 
+                                  onClick={() => receiptInputRef.current?.click()} 
+                                  disabled={isUploadingReceipt}
+                                  className="w-full py-3 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-amber-200"
+                              >
+                                  {isUploadingReceipt ? (
+                                      <span className="animate-pulse">Uploading...</span>
+                                  ) : (
+                                      <><span>🧾</span> Upload Handover Photo</>
+                                  )}
+                              </button>
+                              <p className="text-[9px] text-center text-slate-400 font-bold uppercase mt-2">Required for records</p>
+                          </div>
+                      ) : (
+                          <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center text-xl shrink-0">
+                                  ✓
+                              </div>
+                              <div className="flex-1">
+                                  <p className="text-xs font-black text-emerald-800 uppercase tracking-wide">Receipt Saved</p>
+                                  <a href={posting.donorReceiptImageUrl} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-emerald-600 underline">View Photo</a>
+                              </div>
+                          </div>
+                      )}
+                  </div>
+              )}
+
               {/* RATING BUTTON - Shown only when delivered and not rated yet */}
               {posting.status === FoodStatus.DELIVERED && onRateUser && (
                   <div className="mt-2">
@@ -413,7 +501,11 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
           </button>
           <button onClick={handleTTS} className={`p-2 rounded-full backdrop-blur-md transition-all shadow-sm ${isPlaying ? 'bg-white text-emerald-600' : 'bg-black/20 text-white hover:bg-white hover:text-slate-900'}`} title="Listen">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+              {isPlaying ? (
+                  <svg className="w-4 h-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>
+              ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+              )}
           </button>
       </div>
 

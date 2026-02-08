@@ -125,6 +125,7 @@ export interface FoodPosting {
   isPickedUp?: boolean;
   pickupVerificationImageUrl?: string;
   verificationImageUrl?: string;
+  donorReceiptImageUrl?: string; // Photo uploaded by donor after delivery as a receipt
   volunteerNotes?: string;
   ratings?: Rating[];
   createdAt: number;

@@ -49,6 +49,7 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
   const [lat, setLat] = useState<number | undefined>(undefined);
   const [lng, setLng] = useState<number | undefined>(undefined);
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
+  const [isAddressLoading, setIsAddressLoading] = useState(false);
 
   // Payment & Upload State
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -73,6 +74,7 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
         setLat(user.address.lat);
         setLng(user.address.lng);
     } else {
+        // Initial Geolocation if no address
         navigator.geolocation.getCurrentPosition(pos => {
             setLat(pos.coords.latitude);
             setLng(pos.coords.longitude);
@@ -219,9 +221,13 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
   const handleAutoDetectLocation = () => {
     if (!navigator.geolocation) { alert("Geolocation not supported."); return; }
     setIsAutoDetecting(true);
+    setIsAddressLoading(true); // Show loading skeleton on inputs
+    
     navigator.geolocation.getCurrentPosition(async (pos) => {
         const { latitude, longitude } = pos.coords;
-        setLat(latitude); setLng(longitude);
+        setLat(latitude); 
+        setLng(longitude);
+        
         try { 
             const a = await reverseGeocodeGoogle(latitude, longitude); 
             if (a) { 
@@ -230,10 +236,17 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
                 setLandmark(a.landmark || ''); 
                 setPincode(a.pincode); 
             } else { 
-                alert("Address not found."); 
+                // Don't alert, just let user fill manually if failed
             } 
-        } catch { } finally { setIsAutoDetecting(false); }
-    }, () => { alert("Location denied."); setIsAutoDetecting(false); }, { enableHighAccuracy: true });
+        } catch { } finally { 
+            setIsAutoDetecting(false); 
+            setIsAddressLoading(false);
+        }
+    }, () => { 
+        alert("Location denied."); 
+        setIsAutoDetecting(false); 
+        setIsAddressLoading(false);
+    }, { enableHighAccuracy: true });
   };
 
   // --- Submission Logic ---
@@ -255,53 +268,70 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
   };
 
   const handlePaymentSuccess = async () => {
-    setIsUploading(true);
-    setUploadProgress(0);
+    try {
+        setIsUploading(true);
+        setUploadProgress(0);
 
-    const newPost: FoodPosting = { 
-        id: Math.random().toString(36).substr(2, 9), 
-        donationType, 
-        donorId: user.id, 
-        donorName: user.name || 'Donor', 
-        donorOrg: user.orgName,
-        isDonorVerified: user.isVerified || false,
-        foodName, 
-        description: foodDescription, 
-        quantity: `${quantityNum} ${unit}`, 
-        location: { line1, line2, landmark, pincode, lat, lng }, 
-        expiryDate, 
-        status: FoodStatus.AVAILABLE, 
-        imageUrl: foodImage!, 
-        safetyVerdict, 
-        foodTags: selectedTags, 
-        createdAt: Date.now(), 
-        platformFeePaid: true 
-    };
-    
-    // Simulate upload progress
-    const interval = setInterval(() => {
-        setUploadProgress(prev => {
-            if (prev >= 90) {
-                clearInterval(interval);
-                return 90;
-            }
-            return prev + 10;
-        });
-    }, 150);
+        // Robust sanitation to prevent "Function called with invalid data. Unsupported field value: undefined" error in Firestore
+        const cleanLocation = {
+            line1: line1 || '',
+            line2: line2 || '',
+            landmark: landmark || '',
+            pincode: pincode || '',
+            lat: lat ?? 20.5937, // Default fallback if undefined
+            lng: lng ?? 78.9629  // Default fallback if undefined
+        };
 
-    // Simulate actual delay for storage/network
-    await new Promise(r => setTimeout(r, 2000));
-    await storage.savePosting(newPost);
-    
-    clearInterval(interval);
-    setUploadProgress(100);
-    
-    await new Promise(r => setTimeout(r, 500));
+        const newPost: FoodPosting = { 
+            id: Math.random().toString(36).substr(2, 9), 
+            donationType, 
+            donorId: user.id, 
+            donorName: user.name || 'Donor', 
+            donorOrg: user.orgName || '',
+            isDonorVerified: user.isVerified || false,
+            foodName, 
+            description: foodDescription || '', 
+            quantity: `${quantityNum} ${unit}`, 
+            location: cleanLocation, 
+            expiryDate, 
+            status: FoodStatus.AVAILABLE, 
+            imageUrl: foodImage!, 
+            safetyVerdict, 
+            foodTags: selectedTags, 
+            createdAt: Date.now(), 
+            platformFeePaid: true 
+        };
+        
+        // Simulate upload progress
+        const interval = setInterval(() => {
+            setUploadProgress(prev => {
+                if (prev >= 90) {
+                    clearInterval(interval);
+                    return 90;
+                }
+                return prev + 10;
+            });
+        }, 150);
 
-    setIsUploading(false);
-    setShowPaymentModal(false);
-    setIsProcessingPayment(false);
-    onSuccess(newPost);
+        // Actual save operation
+        await storage.savePosting(newPost);
+        
+        clearInterval(interval);
+        setUploadProgress(100);
+        
+        await new Promise(r => setTimeout(r, 500));
+
+        setIsUploading(false);
+        setShowPaymentModal(false);
+        setIsProcessingPayment(false);
+        onSuccess(newPost);
+    } catch (error) {
+        console.error("Donation upload failed:", error);
+        alert("Failed to save donation. Please check your internet connection and try again.");
+        setIsUploading(false);
+        setShowPaymentModal(false);
+        setIsProcessingPayment(false);
+    }
   };
 
   return (
@@ -352,9 +382,10 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
                 </div>
             )}
 
-            {/* Step 2: Camera & Analysis */}
+            {/* Step 2: Camera & Analysis (omitted for brevity, unchanged) */}
             {currentStep === 1 && (
                 <div className="p-8 flex-1 flex flex-col animate-fade-in-up">
+                    {/* ... (Camera UI Logic - Unchanged) ... */}
                     <div className="space-y-4 flex-1">
                         {!isCameraOpen && !foodImage && (
                             <div className="h-full flex flex-col items-center justify-center border-4 border-dashed border-slate-200 rounded-[2rem] bg-slate-50 p-8">
@@ -423,9 +454,10 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
                 </div>
             )}
 
-            {/* Step 3: Details */}
+            {/* Step 3: Details (omitted for brevity, unchanged) */}
             {currentStep === 2 && (
                 <div className="p-8 flex-1 flex flex-col animate-fade-in-up overflow-y-auto">
+                    {/* ... (Details Form - Unchanged) ... */}
                     {aiAutofilled && (
                         <div className="mb-6 bg-blue-50 border border-blue-100 p-3 rounded-xl flex items-center gap-3 animate-fade-in-up">
                             <span className="text-xl">✨</span>
@@ -486,22 +518,52 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
             {/* Step 4: Location */}
             {currentStep === 3 && (
                 <div className="flex-1 flex flex-col animate-fade-in-up">
-                    <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-                        <div className="flex justify-between items-center mb-4">
-                            <label className="text-xs font-black uppercase text-slate-800 tracking-widest">Confirm Pickup Location</label>
-                            <button type="button" onClick={handleAutoDetectLocation} className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100 hover:bg-emerald-100 transition-colors flex items-center gap-1">
-                                {isAutoDetecting ? <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : '📍'}
-                                Auto Detect
+                    <div className="relative">
+                        <LocationPickerMap 
+                            lat={lat} 
+                            lng={lng} 
+                            onLocationSelect={(newLat, newLng) => { setLat(newLat); setLng(newLng); }} 
+                            onLookupStart={() => setIsAddressLoading(true)}
+                            onAddressFound={(addr) => { 
+                                setLine1(addr.line1); 
+                                setLine2(addr.line2); 
+                                setLandmark(addr.landmark || ''); 
+                                setPincode(addr.pincode);
+                                setIsAddressLoading(false);
+                            }} 
+                        />
+                        
+                        {/* Integrated Auto Detect Button */}
+                        <div className="absolute top-4 right-4 z-[400]">
+                            <button 
+                                type="button" 
+                                onClick={handleAutoDetectLocation} 
+                                className="bg-white hover:bg-slate-50 text-slate-700 p-2.5 rounded-xl shadow-lg border border-slate-100 transition-all flex items-center gap-2 group active:scale-95"
+                            >
+                                {isAutoDetecting ? (
+                                    <svg className="animate-spin w-5 h-5 text-emerald-500" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                ) : (
+                                    <>
+                                        <svg className="w-5 h-5 text-emerald-500 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                        <span className="text-xs font-black uppercase tracking-wider hidden sm:inline">Auto Detect</span>
+                                    </>
+                                )}
                             </button>
                         </div>
-                        <LocationPickerMap lat={lat} lng={lng} onLocationSelect={(newLat, newLng) => { setLat(newLat); setLng(newLng); }} onAddressFound={(addr) => { setLine1(addr.line1); setLine2(addr.line2); setLandmark(addr.landmark || ''); setPincode(addr.pincode); }} />
                     </div>
                     
                     <div className="p-8 space-y-4 flex-1">
-                        <input type="text" placeholder="Street / Building Name" value={line1} onChange={e => setLine1(e.target.value)} className="w-full px-5 py-3 border border-slate-200 bg-slate-50/50 rounded-xl font-bold text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500" required />
-                        <div className="grid grid-cols-2 gap-3">
-                            <input type="text" placeholder="Landmark" value={landmark} onChange={e => setLandmark(e.target.value)} className="w-full px-5 py-3 border border-slate-200 bg-slate-50/50 rounded-xl font-bold text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                            <input type="text" placeholder="Pincode" value={pincode} onChange={e => setPincode(e.target.value)} className="w-full px-5 py-3 border border-slate-200 bg-slate-50/50 rounded-xl font-bold text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500" required />
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-xs font-black uppercase text-slate-800 tracking-widest">Confirm Address</h3>
+                            {isAddressLoading && <span className="text-[10px] font-bold text-emerald-600 animate-pulse">Updating Address...</span>}
+                        </div>
+
+                        <div className={`space-y-4 transition-opacity duration-300 ${isAddressLoading ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                            <input type="text" placeholder="Street / Building Name" value={line1} onChange={e => setLine1(e.target.value)} className="w-full px-5 py-3 border border-slate-200 bg-slate-50/50 rounded-xl font-bold text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500" required />
+                            <div className="grid grid-cols-2 gap-3">
+                                <input type="text" placeholder="Landmark" value={landmark} onChange={e => setLandmark(e.target.value)} className="w-full px-5 py-3 border border-slate-200 bg-slate-50/50 rounded-xl font-bold text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                                <input type="text" placeholder="Pincode" value={pincode} onChange={e => setPincode(e.target.value)} className="w-full px-5 py-3 border border-slate-200 bg-slate-50/50 rounded-xl font-bold text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500" required />
+                            </div>
                         </div>
                     </div>
 
@@ -518,7 +580,7 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
                         </div>
                         <div className="flex gap-4">
                             <button onClick={() => setCurrentStep(2)} className="px-6 py-4 bg-white/10 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-white/20">Back</button>
-                            <button onClick={handleNext} disabled={isProcessingPayment} className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-white font-black py-4 rounded-2xl uppercase tracking-widest text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-70">
+                            <button onClick={handleNext} disabled={isProcessingPayment || isAddressLoading} className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-white font-black py-4 rounded-2xl uppercase tracking-widest text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-70">
                                 {isProcessingPayment ? 'Processing...' : 'Pay & Publish'}
                             </button>
                         </div>
