@@ -147,9 +147,9 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
         onUpdate(posting.id, {
             donorReceiptImageUrl: base64
         });
-        alert("Receipt uploaded successfully!");
+        alert("Handover photo uploaded successfully!");
     } catch {
-        alert("Failed to upload receipt");
+        alert("Failed to upload photo");
     } finally {
         e.target.value = ''; // Reset input
         setIsUploadingReceipt(false);
@@ -168,8 +168,14 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
               targetId = posting.volunteerId;
               targetName = posting.volunteerName || 'Volunteer';
           }
-      } else {
-          // Donor or Volunteer rates Requester
+      } else if (user.role === UserRole.DONOR) {
+          // Donor rates Volunteer
+          if (posting.volunteerId) {
+              targetId = posting.volunteerId;
+              targetName = posting.volunteerName || 'Volunteer';
+          }
+      } else if (user.role === UserRole.VOLUNTEER) {
+          // Volunteer rates Requester
           if (posting.orphanageId) {
               targetId = posting.orphanageId;
               targetName = posting.orphanageName || 'Requester';
@@ -444,8 +450,8 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
                   </div>
               )}
 
-              {/* DONOR RECEIPT UPLOAD (Only after Delivered) */}
-              {user.role === UserRole.DONOR && posting.status === FoodStatus.DELIVERED && posting.donorId === user.id && (
+              {/* DONOR RECEIPT UPLOAD (Available after Pickup confirmed) */}
+              {user.role === UserRole.DONOR && (posting.status === FoodStatus.IN_TRANSIT || posting.status === FoodStatus.DELIVERY_VERIFICATION_PENDING || posting.status === FoodStatus.DELIVERED) && posting.donorId === user.id && (
                   <div className="mt-2 p-3 bg-slate-50 rounded-xl border border-slate-100 border-dashed">
                       {!posting.donorReceiptImageUrl ? (
                           <div className="relative">
@@ -461,7 +467,7 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
                                       <><span>🧾</span> Upload Handover Photo</>
                                   )}
                               </button>
-                              <p className="text-[9px] text-center text-slate-400 font-bold uppercase mt-2">Required for records</p>
+                              <p className="text-[9px] text-center text-slate-400 font-bold uppercase mt-2">Proof of handover to volunteer</p>
                           </div>
                       ) : (
                           <div className="flex items-center gap-3">
@@ -469,7 +475,7 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
                                   ✓
                               </div>
                               <div className="flex-1">
-                                  <p className="text-xs font-black text-emerald-800 uppercase tracking-wide">Receipt Saved</p>
+                                  <p className="text-xs font-black text-emerald-800 uppercase tracking-wide">Handover Proof Saved</p>
                                   <a href={posting.donorReceiptImageUrl} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-emerald-600 underline">View Photo</a>
                               </div>
                           </div>
@@ -490,7 +496,11 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
                               <button onClick={handleRateClick} className="w-full py-3 bg-white border border-slate-200 hover:border-yellow-400 hover:text-yellow-600 text-slate-500 rounded-xl font-black text-xs uppercase tracking-widest transition-all">
                                   Rate Volunteer
                               </button>
-                          ) : ((user.role === UserRole.VOLUNTEER || user.role === UserRole.DONOR) && posting.orphanageId) ? (
+                          ) : (user.role === UserRole.DONOR && posting.volunteerId) ? (
+                              <button onClick={handleRateClick} className="w-full py-3 bg-white border border-slate-200 hover:border-yellow-400 hover:text-yellow-600 text-slate-500 rounded-xl font-black text-xs uppercase tracking-widest transition-all">
+                                  Rate Volunteer
+                              </button>
+                          ) : ((user.role === UserRole.VOLUNTEER) && posting.orphanageId) ? (
                               <button onClick={handleRateClick} className="w-full py-3 bg-white border border-slate-200 hover:border-yellow-400 hover:text-yellow-600 text-slate-500 rounded-xl font-black text-xs uppercase tracking-widest transition-all">
                                   Rate Requester
                               </button>
