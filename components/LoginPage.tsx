@@ -934,6 +934,54 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 </div>
             )}
 
+            {view === 'PHONE_LOGIN' && (
+                <div className="max-w-sm mx-auto mt-8">
+                    <div className="mb-8">
+                        <button onClick={() => switchView('LOGIN')} className="flex items-center text-slate-400 hover:text-slate-600 transition-colors text-xs font-bold mb-4">
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+                            Back to Login
+                        </button>
+                        <h3 className="text-2xl font-black text-slate-800">Phone Login</h3>
+                        <p className="text-slate-500 font-medium text-sm mt-2">Enter your phone number to receive a verification code.</p>
+                    </div>
+
+                    <form onSubmit={handleLoginSendOtp} className="space-y-5">
+                        <div className="space-y-1">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Phone Number</label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                                    <span className="text-slate-500 font-bold text-sm border-r border-slate-300 pr-2">+91</span>
+                                </div>
+                                <input
+                                    type="tel"
+                                    value={phoneForAuth}
+                                    maxLength={10}
+                                    onChange={e => setPhoneForAuth(e.target.value.replace(/\D/g, ''))}
+                                    placeholder="9xxxxxxxxx"
+                                    className="w-full pl-20 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 focus:bg-white transition-all hover:bg-slate-100"
+                                />
+                            </div>
+                        </div>
+
+                        {error && (
+                            <div className="animate-fade-in-up p-3 bg-rose-50 rounded-xl flex items-center gap-3 border border-rose-100">
+                                <svg className="w-5 h-5 text-rose-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                <p className="text-rose-600 text-xs font-bold leading-tight">{error}</p>
+                            </div>
+                        )}
+
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest shadow-xl shadow-slate-200 hover:bg-slate-800 transition-all disabled:opacity-70 flex justify-center items-center gap-3"
+                        >
+                            {loading && <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
+                            Send Code
+                        </button>
+                    </form>
+                </div>
+            )}
+
             {view === 'FORGOT_PASSWORD' && (
                 <div className="max-w-sm mx-auto mt-8">
                     <div className="mb-8">

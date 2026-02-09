@@ -116,6 +116,7 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
     } catch { 
         alert("Failed to upload image");
     } finally { 
+        e.target.value = ''; // Reset input
         setIsPickingUp(false); 
     }
   };
@@ -133,6 +134,7 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
     } catch { 
         alert("Failed to upload image");
     } finally { 
+        e.target.value = ''; // Reset input
         setIsVerifying(false); 
     }
   };
@@ -149,6 +151,7 @@ const FoodCard: React.FC<FoodCardProps> = ({ posting, user, onUpdate, onDelete, 
     } catch {
         alert("Failed to upload receipt");
     } finally {
+        e.target.value = ''; // Reset input
         setIsUploadingReceipt(false);
     }
   };
