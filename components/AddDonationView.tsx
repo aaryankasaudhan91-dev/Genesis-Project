@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, DonationType, FoodStatus, FoodPosting } from '../types';
 import { storage } from '../services/storageService';
-import { analyzeFoodSafetyImage, analyzeClothesImage, editImage, transcribeAudio } from '../services/geminiService';
+import { analyzeFoodSafetyImage, analyzeClothesImage, transcribeAudio } from '../services/geminiService';
 import { reverseGeocodeGoogle } from '../services/mapLoader';
 import LocationPickerMap from './LocationPickerMap';
 import PaymentModal from './PaymentModal';
@@ -14,8 +14,6 @@ interface AddDonationViewProps {
   onBack: () => void;
   onSuccess: (posting?: FoodPosting) => void;
 }
-
-const STEPS = ['TYPE', 'PHOTO', 'DETAILS', 'LOCATION'];
 
 const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = 'FOOD', onBack, onSuccess }) => {
   const [currentStep, setCurrentStep] = useState(0);
@@ -257,9 +255,7 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
                 setLine2(a.line2); 
                 setLandmark(a.landmark || ''); 
                 setPincode(a.pincode); 
-            } else { 
-                // Don't alert, just let user fill manually if failed
-            } 
+            }
         } catch { } finally { 
             setIsAutoDetecting(false); 
             setIsAddressLoading(false);
@@ -290,16 +286,17 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
   };
 
   const handlePaymentSuccess = async () => {
+    let interval: NodeJS.Timeout | null = null;
     try {
         setIsUploading(true);
         setUploadProgress(0);
 
-        // Robust sanitation
+        // Robust sanitation & fallback for missing location
         const cleanLocation = {
-            line1: line1 || '',
+            line1: line1 || 'Unknown Street',
             line2: line2 || '',
             landmark: landmark || '',
-            pincode: pincode || '',
+            pincode: pincode || '000000',
             lat: lat ?? 20.5937, 
             lng: lng ?? 78.9629
         };
@@ -311,38 +308,36 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
             donorName: user.name || 'Donor', 
             donorOrg: user.orgName || '',
             isDonorVerified: user.isVerified || false,
-            foodName, 
+            foodName: foodName.trim() || 'Food Donation', 
             description: foodDescription || '', 
             quantity: `${quantityNum} ${unit}`, 
             location: cleanLocation, 
             expiryDate, 
             status: FoodStatus.AVAILABLE, 
             imageUrl: foodImage!, 
-            safetyVerdict, 
+            safetyVerdict: safetyVerdict || { isSafe: true, reasoning: 'Manual entry' }, 
             foodTags: selectedTags, 
             createdAt: Date.now(), 
             platformFeePaid: true 
         };
         
         // Simulate upload progress
-        const interval = setInterval(() => {
+        interval = setInterval(() => {
             setUploadProgress(prev => {
-                if (prev >= 90) {
-                    clearInterval(interval);
-                    return 90;
-                }
+                if (prev >= 90) return 90;
                 return prev + 10;
             });
         }, 150);
 
         // Actual save operation
+        console.log("Saving new posting...", newPost);
         await storage.savePosting(newPost);
         
-        clearInterval(interval);
         setUploadProgress(100);
         
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 600));
 
+        // Update UI logic
         setIsUploading(false);
         setShowPaymentModal(false);
         setIsProcessingPayment(false);
@@ -353,6 +348,8 @@ const AddDonationView: React.FC<AddDonationViewProps> = ({ user, initialType = '
         setIsUploading(false);
         setShowPaymentModal(false);
         setIsProcessingPayment(false);
+    } finally {
+        if (interval) clearInterval(interval);
     }
   };
 
