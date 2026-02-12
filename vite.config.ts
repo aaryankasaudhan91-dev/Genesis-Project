@@ -10,7 +10,14 @@ export default defineConfig(({ mode }) => {
     server: {
       allowedHosts: [
         'shu-waviest-sachiko.ngrok-free.dev'
-      ]
+      ],
+      proxy: {
+        '/api': {
+          target: 'http://127.0.0.1:5000',
+          changeOrigin: true,
+          secure: false,
+        }
+      }
     },
     define: {
       // Polyfill process.env for Gemini and Firebase and mongodb

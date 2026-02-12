@@ -80,25 +80,36 @@ const App: React.FC = () => {
   // Auth Persistence
   useEffect(() => {
     if (auth) {
-        const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {
-                storage.getUsers().then(storedUsers => {
-                    let matchedUser = storedUsers.find(u => u.id === firebaseUser.uid);
+                try {
+                    // 1. Try fetching by ID (Most efficient)
+                    let matchedUser = await storage.getUser(firebaseUser.uid);
+                    
+                    // 2. Fallback: Search by email if ID lookup fails
                     if (!matchedUser && firebaseUser.email) {
-                        matchedUser = storedUsers.find(u => u.email === firebaseUser.email);
+                        const allUsers = await storage.getUsers();
+                        matchedUser = allUsers.find(u => u.email === firebaseUser.email);
                     }
+
+                    // 3. Fallback: Search by Phone if ID lookup fails
                     if (!matchedUser && firebaseUser.phoneNumber) {
+                         const allUsers = await storage.getUsers();
                          const fPhone = firebaseUser.phoneNumber.replace(/\D/g, '');
-                         matchedUser = storedUsers.find(u => {
+                         matchedUser = allUsers.find(u => {
                              const uPhone = (u.contactNo || '').replace(/\D/g, '');
                              return uPhone && fPhone.includes(uPhone);
                          });
                     }
-                    if (matchedUser && !user) {
+
+                    // 4. Update State if user found
+                    if (matchedUser && (!user || user.id !== matchedUser.id)) {
                         setUser(matchedUser);
                         setView('DASHBOARD');
                     }
-                });
+                } catch (e) {
+                    console.error("Auth detection failed:", e);
+                }
             }
         });
         return () => unsubscribe();

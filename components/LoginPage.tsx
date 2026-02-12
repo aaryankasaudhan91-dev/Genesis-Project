@@ -349,6 +349,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         const result = await signInWithPopup(auth, googleProvider);
         const user = result.user;
         await handleSocialLoginSuccess({
+            uid: user.uid,
             displayName: user.displayName,
             email: user.email,
             photoURL: user.photoURL
@@ -363,7 +364,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     }
   };
 
-  const handleSocialLoginSuccess = async (socialUser: { displayName: string | null, email: string | null, photoURL: string | null | undefined }) => {
+  const handleSocialLoginSuccess = async (socialUser: { uid?: string, displayName: string | null, email: string | null, photoURL: string | null | undefined }) => {
+    // 1. Try finding by UID first if available
+    if (socialUser.uid) {
+        const existingUser = await storage.getUser(socialUser.uid);
+        if (existingUser) {
+            onLogin(existingUser);
+            return;
+        }
+    }
+
+    // 2. Fallback to Email search (Legacy support)
     const users = await storage.getUsers();
     const existingUser = users.find(u => u.email === socialUser.email);
 
@@ -438,14 +449,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           const credential = PhoneAuthProvider.credential(confirmationResult.verificationId, otp);
           const result = await signInWithCredential(auth, credential);
           const user = result.user;
-          const phoneNumber = user.phoneNumber || '';
+          
+          // 1. Try finding by UID
+          let existingUser = await storage.getUser(user.uid);
 
-          const users = await storage.getUsers();
-          const existingUser = users.find(u => {
-             const uPhone = (u.contactNo || '').replace(/\D/g, '');
-             const inputPhone = phoneNumber.replace(/\D/g, '');
-             return uPhone && inputPhone.includes(uPhone);
-          });
+          // 2. Fallback to Phone Search
+          if (!existingUser) {
+              const phoneNumber = user.phoneNumber || '';
+              const users = await storage.getUsers();
+              existingUser = users.find(u => {
+                 const uPhone = (u.contactNo || '').replace(/\D/g, '');
+                 const inputPhone = phoneNumber.replace(/\D/g, '');
+                 return uPhone && inputPhone.includes(uPhone);
+              });
+          }
 
           if (existingUser) {
               onLogin(existingUser);
@@ -588,8 +605,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         const userCredential = await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
         const firebaseUser = userCredential.user;
 
-        const users = await storage.getUsers();
-        const existingUser = users.find(u => u.id === firebaseUser.uid || u.email === firebaseUser.email);
+        // 1. Try to find user by ID first (Optimized)
+        let existingUser = await storage.getUser(firebaseUser.uid);
+
+        // 2. Fallback: Try by Email if ID lookup fails
+        if (!existingUser) {
+             const users = await storage.getUsers();
+             existingUser = users.find(u => u.email === firebaseUser.email);
+        }
 
         if (!existingUser) {
             setLoading(false);
@@ -752,8 +775,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 const userCredential = await signInWithEmailAndPassword(auth, regEmail, regPassword);
                 const firebaseUser = userCredential.user;
                 
-                const users = await storage.getUsers();
-                const existingUser = users.find(u => u.id === firebaseUser.uid);
+                // Optimized check
+                let existingUser = await storage.getUser(firebaseUser.uid);
+                if (!existingUser) {
+                     const users = await storage.getUsers();
+                     existingUser = users.find(u => u.id === firebaseUser.uid);
+                }
                 
                 if (existingUser) {
                     onLogin(existingUser);
@@ -1210,7 +1237,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                                 </div>
                             </div>
 
-                            {/* Volunteer Verification Logic */}
+                                            {/* Volunteer Verification Logic */}
                             {regRole === UserRole.VOLUNTEER && (
                                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-4">
                                     <div className="flex justify-between items-center">
